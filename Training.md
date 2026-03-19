@@ -1606,10 +1606,10 @@ export default function TrainingPage() {
               </div>
             </div>
           </div>
-
+                  
           {/* ✅ NEW: Modular quiz */}
           <QuizCard
-            key={activeModule.id} // ✅ THIS FORCES RESET PER MODULE
+            key={activeModule.id}     // ✅ THIS FORCES RESET PER MODULE
             moduleId={activeModule.id}
             passMark={activeModule.quiz.passMark}
             questions={activeQuiz}

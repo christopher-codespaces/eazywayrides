@@ -269,7 +269,9 @@ export default function ApplicantsForJobPage() {
                   Applicants
                 </div>
 
-                <h1 className="text-2xl md:text-3xl font-semibold text-gray-900 truncate">
+                <h1
+                  className="text-2xl md:text-3xl font-semibold text-gray-900 dark:text-slate-100
+ truncate">
                   {pageTitle}
                 </h1>
 
@@ -317,7 +319,9 @@ export default function ApplicantsForJobPage() {
 
           {error && !loading && (
             <div className="rounded-2xl border bg-white p-4 shadow-sm text-sm">
-              <div className="font-semibold text-gray-900 mb-1">
+              <div
+                className="font-semibold text-gray-900 dark:text-slate-100
+ mb-1">
                 Couldn’t load applicants
               </div>
               <div className="text-rose-600">{error}</div>
@@ -328,7 +332,9 @@ export default function ApplicantsForJobPage() {
             <div
               className="rounded-2xl border bg-white p-6 shadow-sm"
               style={{ borderColor: BRAND.orangeSoft2 }}>
-              <div className="text-gray-900 font-semibold">
+              <div
+                className="text-gray-900 dark:text-slate-100
+ font-semibold">
                 No applicants yet
               </div>
               <p className="text-sm text-gray-700 mt-1">
@@ -356,7 +362,9 @@ export default function ApplicantsForJobPage() {
                     <div className="p-4 md:p-6 flex items-start justify-between gap-4">
                       <div className="min-w-0 space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <div className="text-base md:text-lg font-semibold text-gray-900 truncate">
+                          <div
+                            className="text-base md:text-lg font-semibold text-gray-900 dark:text-slate-100
+ truncate">
                             {a.driverName || "Unknown Driver"}
                           </div>
                           {statusPill(a.status)}
@@ -451,7 +459,9 @@ export default function ApplicantsForJobPage() {
                         <div className="text-xs font-semibold text-gray-700 mb-1">
                           Driver message
                         </div>
-                        <div className="whitespace-pre-wrap text-gray-900">
+                        <div
+                          className="whitespace-pre-wrap text-gray-900 dark:text-slate-100
+">
                           {a.message ? a.message : "No message included."}
                         </div>
                       </div>

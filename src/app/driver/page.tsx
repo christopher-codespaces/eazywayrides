@@ -24,7 +24,9 @@ export default function DriverDashboardPage() {
       <div className="max-w-6xl mx-auto space-y-10">
         {/* Header */}
         <header className="space-y-2">
-          <h1 className="text-3xl md:text-4xl font-semibold text-gray-900">
+          <h1
+            className="text-3xl md:text-4xl font-semibold text-gray-900 dark:text-slate-100
+">
             Driver Dashboard
           </h1>
           <p className="text-sm md:text-base text-gray-600">
@@ -45,7 +47,11 @@ export default function DriverDashboardPage() {
 
         {/* Quick actions */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
+          <h2
+            className="text-lg font-semibold text-gray-900 dark:text-slate-100
+">
+            Quick Actions
+          </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <ActionCard
@@ -70,7 +76,9 @@ export default function DriverDashboardPage() {
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Training modules */}
           <div className="lg:col-span-2 space-y-5">
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2
+              className="text-lg font-semibold text-gray-900 dark:text-slate-100
+">
               Training Modules
             </h2>
 
@@ -95,7 +103,9 @@ export default function DriverDashboardPage() {
                 key={m.title}
                 className="rounded-3xl bg-white border p-6 shadow-sm space-y-4">
                 <div>
-                  <h3 className="text-base md:text-lg font-semibold text-gray-900">
+                  <h3
+                    className="text-base md:text-lg font-semibold text-gray-900 dark:text-slate-100
+">
                     {m.title}
                   </h3>
                   <p className="text-sm text-gray-600 mt-1">{m.desc}</p>
@@ -131,7 +141,9 @@ export default function DriverDashboardPage() {
           {/* AI Coach */}
           <aside className="rounded-3xl bg-white border p-6 shadow-sm flex flex-col gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2
+                className="text-lg font-semibold text-gray-900 dark:text-slate-100
+">
                 AI Training Coach
               </h2>
               <p className="text-sm text-gray-600 mt-1">
@@ -174,7 +186,11 @@ function StatCard({
       </div>
       <div>
         <p className="text-sm text-gray-500">{label}</p>
-        <p className="text-2xl font-semibold text-gray-900">{value}</p>
+        <p
+          className="text-2xl font-semibold text-gray-900 dark:text-slate-100
+">
+          {value}
+        </p>
       </div>
     </div>
   );
@@ -198,7 +214,11 @@ function ActionCard({
       onClick={onClick}
       className="rounded-3xl bg-white border p-6 shadow-sm text-left hover:shadow-md transition flex items-center justify-between gap-4">
       <div>
-        <p className="text-base font-semibold text-gray-900">{title}</p>
+        <p
+          className="text-base font-semibold text-gray-900 dark:text-slate-100
+">
+          {title}
+        </p>
         <p className="text-sm text-gray-600 mt-1">{description}</p>
       </div>
 

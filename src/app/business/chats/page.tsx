@@ -266,7 +266,9 @@ export default function BusinessChatsPage() {
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-semibold text-gray-900 truncate">
+                        <p
+                          className="font-semibold text-gray-900 dark:text-slate-100
+ truncate">
                           {t.driverName
                             ? t.driverName
                             : `Driver: ${t.driverId}`}

@@ -14,80 +14,90 @@ import {
 } from "firebase/firestore";
 import { app } from "@/lib/firebase";
 
-const formatDate = (value: any) => {
-  if (!value) return "-";
-  if (value.toDate) return value.toDate().toLocaleDateString();
-  return "-";
+type JobRow = {
+  id: string;
+  title?: string;
+  businessName?: string;
+  location?: string;
+  vehicleType?: string;
+  pay?: number | string;
+  status?: string;
+  computedStatus?: "open" | "closed" | "expired" | string;
+  createdAt?: Date | null;
+  expiry?: Date | null;
+  isExpired?: boolean;
+};
+
+const formatDate = (d?: Date | null) => {
+  if (!d) return "—";
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+    }).format(d);
+  } catch {
+    return d.toLocaleDateString();
+  }
+};
+
+const chipBase =
+  "inline-flex items-center rounded-full px-3 py-1 text-sm font-extrabold ring-1";
+
+const statusChip = (status?: string) => {
+  const s = String(status || "open").toLowerCase();
+
+  if (s === "open")
+    return "bg-emerald-100 text-emerald-900 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-100 dark:ring-emerald-900/60";
+
+  if (s === "closed")
+    return "bg-zinc-100 text-zinc-900 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-700";
+
+  if (s === "expired")
+    return "bg-rose-100 text-rose-900 ring-rose-200 dark:bg-rose-950 dark:text-rose-100 dark:ring-rose-900/60";
+
+  return "bg-amber-100 text-amber-900 ring-amber-200 dark:bg-amber-950 dark:text-amber-100 dark:ring-amber-900/60";
 };
 
 export default function JobsPostedPage() {
-  /**
-   * Firebase client dependencies (Auth + Firestore)
-   * ---------------------------------------------------------------------------
-   * The Firebase client `app` may be `null` when NEXT_PUBLIC_FIREBASE_* env vars
-   * are not configured (e.g. local development, CI, or review builds).
-   *
-   * To prevent build-time or prerender crashes:
-   * - Auth and Firestore are initialised only when `app` exists
-   * - Otherwise both remain null and the UI exits gracefully
-   *
-   * When environment variables are provided:
-   * - `app` becomes available
-   * - Auth/Firestore initialises normally
-   * - No behaviour change from the original implementation
-   */
-  const auth = useMemo(() => (app ? getAuth(app) : null), [app]);
-  const db = useMemo(() => (app ? getFirestore(app) : null), [app]);
-  
+  const auth = useMemo(() => (app ? getAuth(app) : null), []);
+  const db = useMemo(() => (app ? getFirestore(app) : null), []);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [jobs, setJobs] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [actingOn, setActingOn] = useState<string | null>(null);
 
-  /**
-   * Deletes a job document (admin-only action).
-   *
-   * Guard behaviour:
-   * - If Firestore is not available (missing client env vars),
-   *   exit with a clear error message instead of throwing.
-   */
   const deleteJob = async (jobId: string) => {
     setError(null);
 
-    // Guard: Firebase client not configured
     if (!db) {
       setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars.");
       return;
     }
 
-    const ok = window.confirm("Delete this job? This cannot be undone");
+    const ok = window.confirm("Delete this job? This cannot be undone.");
     if (!ok) return;
+
+    setActingOn(jobId);
 
     try {
       await deleteDoc(doc(db, "jobs", jobId));
-
-      // Remove from UI
-      setJobs((prev) => prev.filter((j: any) => j.id !== jobId));
+      setJobs((prev) => prev.filter((j) => j.id !== jobId));
     } catch (e: any) {
       setError(e?.message || "Failed to delete job");
+    } finally {
+      setActingOn(null);
     }
   };
 
-  /**
-   * Admin verification
-   * ---------------------------------------------------------------------------
-   * Verifies the logged-in user has role = "admin" before allowing access.
-   *
-   * Guard behaviour:
-   * - If Firebase Auth/Firestore is not available (missing client env vars),
-   *   exit early with a clear error message.
-   */
+  // Verify admin
   useEffect(() => {
     setLoading(true);
     setError(null);
     setIsAdmin(false);
 
-    // Guard: Firebase client not configured
     if (!auth || !db) {
       setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars.");
       setLoading(false);
@@ -107,6 +117,7 @@ export default function JobsPostedPage() {
 
         if (!snap.exists()) {
           setError("User profile not found.");
+          setLoading(false);
           return;
         }
 
@@ -126,24 +137,18 @@ export default function JobsPostedPage() {
     return () => unsubscribe();
   }, [auth, db]);
 
-  /**
-   * Jobs fetch (admin only)
-   * ---------------------------------------------------------------------------
-   * Loads jobs ordered by createdAt desc once admin access is confirmed.
-   *
-   * Guard behaviour:
-   * - If Firestore is not available, exit early with a clear error message.
-   */
+  // Fetch jobs (admin only)
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Guard: Firebase client not configured
     if (!db) {
       setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars.");
       return;
     }
 
     const fetchJobs = async () => {
+      setError(null);
+
       try {
         const jobsRef = collection(db, "jobs");
         const q = query(jobsRef, orderBy("createdAt", "desc"));
@@ -151,7 +156,7 @@ export default function JobsPostedPage() {
 
         const now = new Date();
 
-        const list = snap.docs
+        const list: JobRow[] = snap.docs
           .map((d) => {
             const data = d.data() as any;
 
@@ -162,21 +167,24 @@ export default function JobsPostedPage() {
               data.createdAt?.toDate ? data.createdAt.toDate() : null;
 
             const isExpired = !!expiry && expiry <= now;
-
-            // UI status: expired overrides DB status
-            const computedStatus = isExpired ? "expired" : (data.status || "open");
+            const computedStatus = isExpired ? "expired" : String(data.status || "open");
 
             return {
               id: d.id,
-              ...data,
+              title: data.title,
+              businessName: data.businessName,
+              location: data.location,
+              vehicleType: data.vehicleType,
+              pay: data.pay,
+              status: data.status,
               createdAt,
               expiry,
               isExpired,
-              computedStatus, // "open" | "closed" | "expired"
+              computedStatus,
             };
           })
           // optional: keep non-expired first
-          .sort((a: any, b: any) => (a.isExpired ? 1 : 0) - (b.isExpired ? 1 : 0));
+          .sort((a, b) => (a.isExpired ? 1 : 0) - (b.isExpired ? 1 : 0));
 
         setJobs(list);
       } catch (e: any) {
@@ -187,39 +195,152 @@ export default function JobsPostedPage() {
     fetchJobs();
   }, [isAdmin, db]);
 
-  if (loading) return <div className="p-6">Loading...</div>;
-  if (error) return <div className="p-6 text-red-600">{error}</div>;
-  if (!isAdmin) return <div className="p-6">Not authorized</div>;
-
-  return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">All Jobs</h1>
-      <p className="text-sm text-gray-600">Total jobs: {jobs.length}</p>
-
-      {jobs.map((job: any) => (
-        <div key={job.id} className="border rounded-lg p-4 bg-white">
-          <div className="font-semibold">{job.title}</div>
-          <div className="text-sm text-gray-600">{job.businessName}</div>
-
-          <div className="text-sm mt-2 space-y-1">
-            <div>Location: {job.location}</div>
-            <div>Vehicle: {job.vehicleType}</div>
-            <div>Pay: R{job.pay}</div>
-            <div>Status: {job.computedStatus}</div>
-            <div>Created: {formatDate(job.createdAt)}</div>
-            <div>Expires: {formatDate(job.expiry)}</div>
-          </div>
-
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={() => deleteJob(job.id)}
-              className="mt-3 px-3 py-2 rounded bg-red-600 text-white hover:bg-red-700"
-            >
-              Delete
-            </button>
+  // UI states
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <p className="text-base text-zinc-700 dark:text-zinc-300">Loading…</p>
           </div>
         </div>
-      ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 shadow-sm dark:border-rose-900/50 dark:bg-rose-950/40">
+            <p className="text-base font-semibold text-rose-700 dark:text-rose-200">
+              {error}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <p className="text-base font-semibold text-zinc-800 dark:text-zinc-200">
+              Not authorized
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+              All Jobs
+            </h1>
+            <p className="text-base text-zinc-700 dark:text-zinc-300">
+              Total jobs: <span className="font-semibold">{jobs.length}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Empty */}
+        {jobs.length === 0 && (
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <p className="text-base text-zinc-700 dark:text-zinc-300">
+              No jobs found.
+            </p>
+          </div>
+        )}
+
+        {/* List (cards are mobile-first, become 2-column on large screens) */}
+        {jobs.length > 0 && (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {jobs.map((job) => (
+              <div
+                key={job.id}
+                className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                {/* Top row */}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-lg font-extrabold break-words">
+                      {job.title || "Untitled job"}
+                    </div>
+                    <div className="mt-1 text-base text-zinc-700 dark:text-zinc-300 break-words">
+                      {job.businessName || "—"}
+                    </div>
+                  </div>
+
+                  <div className={`${chipBase} ${statusChip(job.computedStatus)}`}>
+                    {String(job.computedStatus || "open").toUpperCase()}
+                  </div>
+                </div>
+
+                {/* Details */}
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/40">
+                    <div className="text-sm font-extrabold text-zinc-800 dark:text-zinc-200">
+                      Location
+                    </div>
+                    <div className="mt-1 text-base text-zinc-700 dark:text-zinc-300 break-words">
+                      {job.location || "—"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/40">
+                    <div className="text-sm font-extrabold text-zinc-800 dark:text-zinc-200">
+                      Vehicle
+                    </div>
+                    <div className="mt-1 text-base text-zinc-700 dark:text-zinc-300 break-words">
+                      {job.vehicleType || "—"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/40">
+                    <div className="text-sm font-extrabold text-zinc-800 dark:text-zinc-200">
+                      Pay
+                    </div>
+                    <div className="mt-1 text-base text-zinc-700 dark:text-zinc-300">
+                      {job.pay !== undefined && job.pay !== null ? `R${job.pay}` : "—"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/40">
+                    <div className="text-sm font-extrabold text-zinc-800 dark:text-zinc-200">
+                      Dates
+                    </div>
+                    <div className="mt-1 text-base text-zinc-700 dark:text-zinc-300">
+                      Created: <span className="font-semibold">{formatDate(job.createdAt)}</span>
+                    </div>
+                    <div className="text-base text-zinc-700 dark:text-zinc-300">
+                      Expires: <span className="font-semibold">{formatDate(job.expiry)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer actions */}
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <button
+                    onClick={() => deleteJob(job.id)}
+                    disabled={actingOn === job.id}
+                    className="h-12 rounded-xl bg-rose-700 px-4 text-base font-extrabold text-white shadow-sm transition hover:bg-rose-800 focus:outline-none focus:ring-4 focus:ring-rose-200 disabled:opacity-60 disabled:hover:bg-rose-700 dark:focus:ring-rose-900/40"
+                  >
+                    {actingOn === job.id ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

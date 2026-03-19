@@ -97,7 +97,11 @@ export default function DriverChatsPage() {
               <MessageSquare size={20} />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Chats</h1>
+              <h1
+                className="text-2xl font-semibold text-gray-900 dark:text-slate-100
+">
+                Chats
+              </h1>
               <p className="text-sm text-gray-600">
                 Conversations with businesses for each job application
               </p>
@@ -125,7 +129,9 @@ export default function DriverChatsPage() {
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-100 text-orange-600">
               <MessageSquare />
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-gray-900">
+            <h2
+              className="mt-4 text-lg font-semibold text-gray-900 dark:text-slate-100
+">
               No chats yet
             </h2>
             <p className="mt-2 text-sm text-gray-600">
@@ -143,7 +149,9 @@ export default function DriverChatsPage() {
                 className="rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                    <div
+                      className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-slate-100
+">
                       <Briefcase size={16} className="text-orange-600" />
                       <span className="truncate">
                         {t.jobTitle ? t.jobTitle : `Job ${t.jobId}`}

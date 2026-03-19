@@ -1,26 +1,114 @@
 @import "tailwindcss";
 
+/* -------------------------------------------------
+   1) Global Typography Tokens (LIGHT default)
+-------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-} 
+  --bg: #ffffff;
+  --card: #ffffff;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --text: #0f172a;         /* slate-900: crisp dark text */
+  --text-muted: #334155;   /* slate-700: readable muted */
+  --text-soft: #64748b;    /* slate-500: secondary */
+  --border: #e2e8f0;       /* slate-200 */
+
+  --heading: #0b1220;      /* slightly deeper than body */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* -------------------------------------------------
+   2) Dark Mode Tokens (ONLY if html.dark exists)
+-------------------------------------------------- */
+html.dark {
+  --bg: #0b1220;          /* deep slate */
+  --card: #0f172a;        /* slate-900 */
+
+  --text: #f8fafc;        /* slate-50 */
+  --text-muted: #cbd5e1;  /* slate-300 */
+  --text-soft: #94a3b8;   /* slate-400 */
+  --border: #334155;      /* slate-700 */
+
+  --heading: #ffffff;
 }
 
+/* -------------------------------------------------
+   3) Apply tokens globally
+-------------------------------------------------- */
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
-} 
+
+  /* Make text look sharp like your screenshot */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}
+
+/* Headings: crisp + strong */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--heading);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+/* Paragraph / normal text */
+p, span, label, small, strong {
+  color: var(--text);
+}
+
+/* -------------------------------------------------
+   4) Global overrides for Tailwind utility classes
+   (This is what fixes unreadable text everywhere)
+-------------------------------------------------- */
+
+/* Common Tailwind text colors → map to our tokens */
+.text-gray-900,
+.text-gray-800,
+.text-gray-700 {
+  color: var(--text) !important;
+}
+
+.text-gray-600,
+.text-gray-500 {
+  color: var(--text-muted) !important;
+}
+
+.text-gray-400,
+.text-gray-300 {
+  color: var(--text-soft) !important;
+}
+
+/* Background utilities */
+.bg-white {
+  background-color: var(--card) !important;
+}
+
+.bg-gray-50,
+.bg-gray-100 {
+  background-color: var(--bg) !important;
+}
+
+/* Borders */
+.border,
+.border-gray-200,
+.border-gray-300 {
+  border-color: var(--border) !important;
+}
+
+/* Cards + panels often use these */
+.shadow-sm {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06) !important;
+}
+
+/* Inputs */
+input, textarea, select {
+  background: var(--card) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-soft) !important;
+}

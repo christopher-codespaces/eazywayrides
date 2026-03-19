@@ -272,7 +272,9 @@ export default function DriverJobsPage() {
                 Driver Jobs
               </div>
 
-              <h1 className="mt-3 text-2xl font-semibold text-gray-900 md:text-3xl">
+              <h1
+                className="mt-3 text-2xl font-semibold text-gray-900 dark:text-slate-100
+ md:text-3xl">
                 Available Jobs
               </h1>
 
@@ -318,7 +320,9 @@ export default function DriverJobsPage() {
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-50 text-orange-700">
               <Briefcase className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-gray-900">
+            <h2
+              className="mt-4 text-lg font-semibold text-gray-900 dark:text-slate-100
+">
               No jobs available right now
             </h2>
             <p className="mt-2 text-sm text-gray-600">
@@ -339,12 +343,16 @@ export default function DriverJobsPage() {
                   className="rounded-2xl border bg-white p-5 shadow-sm transition hover:shadow-md">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900">
+                      <h2
+                        className="text-lg font-semibold text-gray-900 dark:text-slate-100
+">
                         {job.title}
                       </h2>
                       <p className="mt-1 text-sm text-gray-600">
                         Posted by{" "}
-                        <span className="font-medium text-gray-900">
+                        <span
+                          className="font-medium text-gray-900 dark:text-slate-100
+">
                           {job.businessName}
                         </span>
                       </p>

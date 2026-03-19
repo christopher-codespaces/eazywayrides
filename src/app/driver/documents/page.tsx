@@ -187,7 +187,9 @@ export default function DriverDocumentsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-semibold text-gray-900">
+            <h1
+              className="text-3xl font-semibold text-gray-900 dark:text-slate-100
+">
               Driver Documents
             </h1>
             <p className="text-sm text-gray-600 mt-1">
@@ -197,7 +199,8 @@ export default function DriverDocumentsPage() {
 
           <button
             onClick={() => router.push("/driver")}
-            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900">
+            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 dark:text-slate-100
+">
             <ArrowLeft size={18} />
             Back
           </button>
@@ -207,7 +210,9 @@ export default function DriverDocumentsPage() {
         <div className="rounded-3xl bg-white border p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-gray-900">
+              <p
+                className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
                 Verification progress
               </p>
               <p className="text-xs text-gray-600 mt-1">
@@ -246,7 +251,9 @@ export default function DriverDocumentsPage() {
                   className="rounded-3xl bg-white border p-6 shadow-sm space-y-4">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900">
+                      <h3
+                        className="text-lg font-semibold text-gray-900 dark:text-slate-100
+">
                         {label}
                       </h3>
                       <p className="text-sm text-gray-600 mt-1">{hint}</p>
@@ -256,7 +263,9 @@ export default function DriverDocumentsPage() {
 
                   {isUploaded && latest && (
                     <div className="rounded-xl bg-gray-50 border p-4 text-sm">
-                      <p className="font-medium text-gray-900">
+                      <p
+                        className="font-medium text-gray-900 dark:text-slate-100
+">
                         {latest.fileName}
                       </p>
                       <p className="text-xs text-gray-600 mt-1">

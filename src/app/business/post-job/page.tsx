@@ -210,7 +210,9 @@ export default function PostJobPage() {
               <Sparkles className="h-4 w-4" style={{ color: BRAND.orange }} />
               Post a Job
             </div>
-            <h1 className="text-2xl md:text-3xl font-semibold text-gray-900">
+            <h1
+              className="text-2xl md:text-3xl font-semibold text-gray-900 dark:text-slate-100
+">
               Create a driver job in minutes
             </h1>
             <p className="text-sm text-gray-600">
@@ -231,7 +233,9 @@ export default function PostJobPage() {
           <div className="p-4 md:p-5 border-b bg-gradient-to-r from-orange-50 to-rose-50">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base md:text-lg font-semibold text-gray-900">
+                <h2
+                  className="text-base md:text-lg font-semibold text-gray-900 dark:text-slate-100
+">
                   AI job autofill
                 </h2>
                 <p className="text-xs md:text-sm text-gray-600 mt-1">
@@ -247,7 +251,8 @@ export default function PostJobPage() {
 
           <div className="p-4 md:p-5 space-y-3">
             <textarea
-              className="w-full rounded-xl border bg-white p-3 text-sm text-gray-900 placeholder:text-gray-400 min-h-[110px] focus:outline-none focus:ring-2"
+              className="w-full rounded-xl border bg-white p-3 text-sm text-gray-900 dark:text-slate-100
+ placeholder:text-gray-400 min-h-[110px] focus:outline-none focus:ring-2"
               style={{ outlineColor: BRAND.orange }}
               placeholder="Type the job details in plain language..."
               value={aiPrompt}
@@ -294,7 +299,9 @@ export default function PostJobPage() {
           onSubmit={handleSubmit}
           className="rounded-2xl border bg-white shadow-sm p-4 md:p-6 space-y-4">
           <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-900">
+            <label
+              className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
               Job Title <span className="text-rose-600">*</span>
             </label>
             <div className="relative">
@@ -311,7 +318,9 @@ export default function PostJobPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-900">
+            <label
+              className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
               Job Description
             </label>
             <textarea
@@ -324,7 +333,9 @@ export default function PostJobPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-semibold text-gray-900">
+            <label
+              className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
               Location <span className="text-rose-600">*</span>
             </label>
             <div className="relative">
@@ -342,7 +353,9 @@ export default function PostJobPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1">
-              <label className="text-sm font-semibold text-gray-900">
+              <label
+                className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
                 Vehicle Type <span className="text-rose-600">*</span>
               </label>
               <div className="relative">
@@ -364,7 +377,9 @@ export default function PostJobPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-semibold text-gray-900">
+              <label
+                className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
                 Pay (R) <span className="text-rose-600">*</span>
               </label>
               <div className="relative">
@@ -382,7 +397,9 @@ export default function PostJobPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-semibold text-gray-900">
+              <label
+                className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
                 Expiry Date <span className="text-rose-600">*</span>
               </label>
               <div className="relative">

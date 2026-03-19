@@ -274,7 +274,9 @@ export default function PostedJobsPage() {
                   Posted Jobs
                 </div>
 
-                <h1 className="text-2xl md:text-3xl font-semibold text-gray-900">
+                <h1
+                  className="text-2xl md:text-3xl font-semibold text-gray-900 dark:text-slate-100
+">
                   Jobs you&apos;ve posted
                 </h1>
 
@@ -326,7 +328,9 @@ export default function PostedJobsPage() {
 
           {error && !loading && (
             <div className="rounded-2xl border bg-white p-4 shadow-sm text-sm">
-              <div className="font-semibold text-gray-900 mb-1">
+              <div
+                className="font-semibold text-gray-900 dark:text-slate-100
+ mb-1">
                 Something went wrong
               </div>
               <div className="text-rose-600">{error}</div>
@@ -337,7 +341,11 @@ export default function PostedJobsPage() {
             <div
               className="rounded-2xl border bg-white p-6 shadow-sm"
               style={{ borderColor: BRAND.orangeSoft2 }}>
-              <div className="text-gray-900 font-semibold">No jobs yet</div>
+              <div
+                className="text-gray-900 dark:text-slate-100
+ font-semibold">
+                No jobs yet
+              </div>
               <p className="text-sm text-gray-700 mt-1">
                 Post your first job to start receiving driver applications.
               </p>
@@ -375,7 +383,9 @@ export default function PostedJobsPage() {
                       {/* left */}
                       <div className="min-w-0 space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h2 className="text-lg font-semibold text-gray-900 truncate">
+                          <h2
+                            className="text-lg font-semibold text-gray-900 dark:text-slate-100
+ truncate">
                             {job.title}
                           </h2>
                           <StatusBadge status={job.computedStatus} />

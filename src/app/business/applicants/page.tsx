@@ -289,7 +289,9 @@ export default function ApplicantsPage() {
                     </div>
 
                     <div className="min-w-0">
-                      <p className="font-semibold text-gray-900 truncate">
+                      <p
+                        className="font-semibold text-gray-900 dark:text-slate-100
+ truncate">
                         {a.driverName || `Driver: ${a.driverId}`}
                       </p>
 

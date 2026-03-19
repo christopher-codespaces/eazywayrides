@@ -34,7 +34,9 @@ export default function BusinessDashboardPage() {
               Business Portal
             </div>
 
-            <h1 className="text-2xl md:text-3xl font-semibold text-gray-900">
+            <h1
+              className="text-2xl md:text-3xl font-semibold text-gray-900 dark:text-slate-100
+">
               Business Dashboard
             </h1>
 
@@ -79,7 +81,9 @@ export default function BusinessDashboardPage() {
 
         {/* Mobile quick actions */}
         <section className="md:hidden">
-          <h2 className="text-base font-semibold text-gray-900 mb-3">
+          <h2
+            className="text-base font-semibold text-gray-900 dark:text-slate-100
+ mb-3">
             Quick Actions
           </h2>
 
@@ -107,7 +111,11 @@ export default function BusinessDashboardPage() {
 
         {/* Desktop quick actions */}
         <section className="hidden md:block space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
+          <h2
+            className="text-lg font-semibold text-gray-900 dark:text-slate-100
+">
+            Quick Actions
+          </h2>
 
           <div className="grid grid-cols-3 gap-4">
             <button
@@ -125,7 +133,11 @@ export default function BusinessDashboardPage() {
                 </div>
                 <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-gray-500 transition" />
               </div>
-              <div className="mt-3 font-semibold text-gray-900">Post a Job</div>
+              <div
+                className="mt-3 font-semibold text-gray-900 dark:text-slate-100
+">
+                Post a Job
+              </div>
               <div className="text-sm text-gray-600 mt-1">
                 Create a new job listing.
               </div>
@@ -146,7 +158,9 @@ export default function BusinessDashboardPage() {
                 </div>
                 <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-gray-500 transition" />
               </div>
-              <div className="mt-3 font-semibold text-gray-900">
+              <div
+                className="mt-3 font-semibold text-gray-900 dark:text-slate-100
+">
                 View Active Jobs
               </div>
               <div className="text-sm text-gray-600 mt-1">
@@ -169,7 +183,9 @@ export default function BusinessDashboardPage() {
                 </div>
                 <ArrowRight className="h-4 w-4 text-gray-300 group-hover:text-gray-500 transition" />
               </div>
-              <div className="mt-3 font-semibold text-gray-900">
+              <div
+                className="mt-3 font-semibold text-gray-900 dark:text-slate-100
+">
                 Review Applications
               </div>
               <div className="text-sm text-gray-600 mt-1">
@@ -185,7 +201,9 @@ export default function BusinessDashboardPage() {
           {/* AI Coach */}
           <aside className="order-1 md:order-2 rounded-2xl border bg-white shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-gradient-to-r from-orange-50 to-white">
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2
+                className="text-lg font-semibold text-gray-900 dark:text-slate-100
+">
                 AI Business Coach
               </h2>
               <p className="text-sm text-gray-600 mt-1">
@@ -259,8 +277,16 @@ function StatCard(props: {
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-gray-900">{props.title}</p>
-          <p className="text-3xl font-bold text-gray-900 mt-2">{props.value}</p>
+          <p
+            className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
+            {props.title}
+          </p>
+          <p
+            className="text-3xl font-bold text-gray-900 dark:text-slate-100
+ mt-2">
+            {props.value}
+          </p>
           <p className="text-xs text-gray-500 mt-2">{props.helper}</p>
         </div>
 
@@ -291,7 +317,9 @@ function ActionRow(props: {
       className="rounded-2xl border bg-white p-4 shadow-sm active:scale-[0.99] transition text-left">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-gray-900">
+          <div
+            className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
             {props.title}
           </div>
           <div className="text-xs text-gray-600 mt-1">{props.desc}</div>
@@ -324,7 +352,11 @@ function ActionRow(props: {
 function SectionTitle(props: { title: string; subtitle: string }) {
   return (
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
-      <div className="text-sm font-semibold text-gray-900">{props.title}</div>
+      <div
+        className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
+        {props.title}
+      </div>
       <div className="text-xs text-gray-600 mt-1">{props.subtitle}</div>
     </div>
   );
@@ -348,7 +380,11 @@ function MetricCard(props: {
   return (
     <div className="rounded-2xl border bg-white p-4 shadow-sm space-y-3">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900">{props.title}</h3>
+        <h3
+          className="text-sm font-semibold text-gray-900 dark:text-slate-100
+">
+          {props.title}
+        </h3>
         <p className="text-xs text-gray-600 mt-1">{props.desc}</p>
       </div>
 
