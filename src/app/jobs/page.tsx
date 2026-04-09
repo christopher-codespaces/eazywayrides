@@ -14,7 +14,7 @@ import {
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { app } from "@/lib/firebase";
+import { initFirebaseClient } from "@/lib/firebaseClient";
 import { MapPin, Truck, Banknote, Calendar, Briefcase } from "lucide-react";
 
 // Shape of job docs we render in the UI
@@ -46,8 +46,8 @@ const isValidZaPhone = (input: string) => {
 };
 
 export default function DriverJobsPage() {
-  const db = useMemo(() => (app ? getFirestore(app) : null), []);
-  const auth = useMemo(() => (app ? getAuth(app) : null), []);
+  const db = useMemo(() => (app ? getFirestore(app) : null), [app]);
+  const auth = useMemo(() => (app ? getAuth(app) : null), [app]);
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +59,11 @@ export default function DriverJobsPage() {
   const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    let isMounted = true;
+    initFirebaseClient();
+  }, []);
+
+  useEffect(() => {
+    if (!app) return;
 
     const fetchJobs = async (): Promise<Job[]> => {
       if (!db) {
