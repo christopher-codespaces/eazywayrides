@@ -162,6 +162,7 @@ export default function LoginPage() {
         phone: "", // <-- added
         name: "",
         businessName: null,
+        credits: 3, // free starter credits for all new users
         createdAt: Date.now(),
       });
     }
@@ -244,6 +245,7 @@ export default function LoginPage() {
             phone: "", // <-- added
             name: "",
             businessName: null,
+            credits: 3, // free starter credits for all new users
             createdAt: Date.now(),
           },
           { merge: true }
@@ -300,6 +302,7 @@ export default function LoginPage() {
             phone: "", // <-- added
             name: "",
             businessName: null,
+            credits: 3, // free starter credits for all new users
             createdAt: Date.now(),
           },
           { merge: true }

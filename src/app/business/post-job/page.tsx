@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAuth } from "firebase/auth";
 import {
   getFirestore,
   doc,
   getDoc,
+  updateDoc,
   collection,
   addDoc,
   serverTimestamp,
@@ -21,8 +22,11 @@ import {
   Banknote,
   ClipboardList,
   ArrowLeft,
+  Lock,
+  Coins,
 } from "lucide-react";
 import { app } from "@/lib/firebase";
+import CreditBadge from "@/components/CreditBadge";
 
 const BRAND = {
   orange: "#F36C21",
@@ -41,9 +45,13 @@ function addDaysToDateInput(days: number) {
 }
 
 export default function PostJobPage() {
-  const auth = useMemo(() => (app ? getAuth(app) : null), []);
-  const db = useMemo(() => (app ? getFirestore(app) : null), []);
+  const auth = app ? getAuth(app) : null;
+  const db = app ? getFirestore(app) : null;
   const router = useRouter();
+
+  // Credits state
+  const [credits, setCredits] = useState<number | null>(null);
+  const [creditsLoading, setCreditsLoading] = useState(true);
 
   // AI helper input
   const [aiPrompt, setAiPrompt] = useState("");
@@ -62,6 +70,23 @@ export default function PostJobPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Fetch current credits on mount
+  useEffect(() => {
+    if (!auth?.currentUser || !db) {
+      setCreditsLoading(false);
+      return;
+    }
+
+    getDoc(doc(db, "users", auth.currentUser.uid))
+      .then((snap) => {
+        setCredits(snap.exists() ? (snap.data().credits ?? 0) : 0);
+      })
+      .catch(() => setCredits(0))
+      .finally(() => setCreditsLoading(false));
+  }, [auth?.currentUser, db]);
+
+  const hasCredits = (credits ?? 0) > 0;
 
   const runAIAutofill = async () => {
     setAiError(null);
@@ -115,34 +140,7 @@ export default function PostJobPage() {
     setSuccess(null);
 
     if (!auth || !db) {
-      setError(
-        "Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars.",
-      );
-      return;
-    }
-
-    if (!title || !location || !vehicleType || !pay || !expiry) {
-      setError("Please fill in all required fields, including expiry date.");
-      return;
-    }
-
-    const payNumber = Number(pay);
-    if (isNaN(payNumber) || payNumber <= 0) {
-      setError("Pay must be a positive number.");
-      return;
-    }
-
-    const expiryDate = new Date(expiry);
-    expiryDate.setHours(23, 59, 59, 999);
-
-    if (isNaN(expiryDate.getTime())) {
-      setError("Invalid expiry date.");
-      return;
-    }
-
-    const now = new Date();
-    if (expiryDate <= now) {
-      setError("Expiry date must be in the future.");
+      setError("Firebase is not configured.");
       return;
     }
 
@@ -152,8 +150,8 @@ export default function PostJobPage() {
       return;
     }
 
+    // --- Server-side credit check & deduct ---
     setLoading(true);
-
     try {
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
@@ -162,28 +160,41 @@ export default function PostJobPage() {
 
       const userData = userSnap.data() as any;
       const role = userData.role as "driver" | "business" | "admin" | undefined;
+      const currentCredits = userData.credits ?? 0;
 
       if (role !== "business")
         throw new Error("Only business accounts can post jobs.");
 
+      if (currentCredits <= 0) {
+        router.push("/business/buy-credits");
+        return;
+      }
+
       const businessName =
         userData.businessName || userData.name || userData.email || "Unknown";
 
+      // Post the job
       const jobsRef = collection(db, "jobs");
       await addDoc(jobsRef, {
         title,
         description,
         location,
         vehicleType,
-        pay: payNumber,
+        pay: Number(pay),
         businessId: user.uid,
         businessName,
         status: "open",
         createdAt: serverTimestamp(),
-        expiry: expiryDate,
+        expiry: new Date(expiry + "T23:59:59.999Z"),
       });
 
-      setSuccess("Job posted successfully.");
+      // Deduct 1 credit
+      await updateDoc(userRef, { credits: currentCredits - 1 });
+
+      // Update local credits display
+      setCredits(currentCredits - 1);
+
+      setSuccess("Job posted! Credit deducted.");
 
       setTitle("");
       setDescription("");
@@ -194,11 +205,71 @@ export default function PostJobPage() {
       setAiPrompt("");
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || "Failed to post job.");
+      if (err?.message === "User profile not found." || err?.message === "Only business accounts can post jobs.") {
+        setError(err.message);
+      } else {
+        setError(err?.message || "Failed to post job.");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // Locked state — no credits
+  if (!creditsLoading && !hasCredits) {
+    return (
+      <div className="min-h-screen bg-gray-50 pt-14 pb-20 md:pt-8 md:pb-10">
+        <div className="mx-auto w-full max-w-3xl px-4 md:px-6 space-y-5">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-xs font-semibold text-gray-700">
+                <Sparkles className="h-4 w-4" style={{ color: BRAND.orange }} />
+                Post a Job
+              </div>
+              <h1 className="text-2xl md:text-3xl font-semibold text-gray-900">
+                Create a driver job in minutes
+              </h1>
+              <p className="text-sm text-gray-600">
+                Use the AI helper to auto-fill the form, then review and post.
+              </p>
+            </div>
+            <button
+              onClick={() => router.push("/business")}
+              className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition active:scale-[0.99]">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+          </div>
+
+          {/* No credits block */}
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center space-y-4">
+            <div className="flex justify-center">
+              <div className="h-16 w-16 rounded-full bg-rose-100 flex items-center justify-center">
+                <Lock className="h-8 w-8 text-rose-600" />
+              </div>
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                No credits remaining
+              </h2>
+              <p className="text-sm text-gray-600 mt-2 max-w-sm mx-auto">
+                You need at least 1 credit to post a job. Purchase a bundle to
+                continue posting.
+              </p>
+            </div>
+            <button
+              onClick={() => router.push("/business/buy-credits")}
+              className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white shadow-sm transition active:scale-[0.99]"
+              style={{ background: `linear-gradient(90deg, ${BRAND.orange}, ${BRAND.red})` }}>
+              <Coins className="h-4 w-4" />
+              Buy Credits
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pt-14 pb-20 md:pt-8 md:pb-10">
@@ -210,9 +281,7 @@ export default function PostJobPage() {
               <Sparkles className="h-4 w-4" style={{ color: BRAND.orange }} />
               Post a Job
             </div>
-            <h1
-              className="text-2xl md:text-3xl font-semibold text-gray-900 dark:text-slate-100
-">
+            <h1 className="text-2xl md:text-3xl font-semibold text-gray-900">
               Create a driver job in minutes
             </h1>
             <p className="text-sm text-gray-600">
@@ -220,12 +289,15 @@ export default function PostJobPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => router.push("/business")}
-            className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition active:scale-[0.99]">
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
+          <div className="flex items-center gap-3">
+            <CreditBadge />
+            <button
+              onClick={() => router.push("/business")}
+              className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition active:scale-[0.99]">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+          </div>
         </div>
 
         {/* AI Autofill Card */}
@@ -233,14 +305,12 @@ export default function PostJobPage() {
           <div className="p-4 md:p-5 border-b bg-gradient-to-r from-orange-50 to-rose-50">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2
-                  className="text-base md:text-lg font-semibold text-gray-900 dark:text-slate-100
-">
+                <h2 className="text-base md:text-lg font-semibold text-gray-900">
                   AI job autofill
                 </h2>
                 <p className="text-xs md:text-sm text-gray-600 mt-1">
-                  Example: “Need a scooter driver in Cape Town CBD. Mon–Fri 9–5.
-                  R450 per day. Must have smartphone.”
+                  Example: "Need a scooter driver in Cape Town CBD. Mon–Fri 9–5.
+                  R450 per day. Must have smartphone."
                 </p>
               </div>
               <div className="h-10 w-10 rounded-xl grid place-items-center bg-white border shadow-sm">
@@ -251,7 +321,7 @@ export default function PostJobPage() {
 
           <div className="p-4 md:p-5 space-y-3">
             <textarea
-              className="w-full rounded-xl border bg-white p-3 text-sm text-gray-900 dark:text-slate-100
+              className="w-full rounded-xl border bg-white p-3 text-sm text-gray-900
  placeholder:text-gray-400 min-h-[110px] focus:outline-none focus:ring-2"
               style={{ outlineColor: BRAND.orange }}
               placeholder="Type the job details in plain language..."
@@ -299,9 +369,7 @@ export default function PostJobPage() {
           onSubmit={handleSubmit}
           className="rounded-2xl border bg-white shadow-sm p-4 md:p-6 space-y-4">
           <div className="space-y-1">
-            <label
-              className="text-sm font-semibold text-gray-900 dark:text-slate-100
-">
+            <label className="text-sm font-semibold text-gray-900">
               Job Title <span className="text-rose-600">*</span>
             </label>
             <div className="relative">
@@ -318,9 +386,7 @@ export default function PostJobPage() {
           </div>
 
           <div className="space-y-1">
-            <label
-              className="text-sm font-semibold text-gray-900 dark:text-slate-100
-">
+            <label className="text-sm font-semibold text-gray-900">
               Job Description
             </label>
             <textarea
@@ -333,9 +399,7 @@ export default function PostJobPage() {
           </div>
 
           <div className="space-y-1">
-            <label
-              className="text-sm font-semibold text-gray-900 dark:text-slate-100
-">
+            <label className="text-sm font-semibold text-gray-900">
               Location <span className="text-rose-600">*</span>
             </label>
             <div className="relative">
@@ -353,15 +417,13 @@ export default function PostJobPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1">
-              <label
-                className="text-sm font-semibold text-gray-900 dark:text-slate-100
-">
+              <label className="text-sm font-semibold text-gray-900">
                 Vehicle Type <span className="text-rose-600">*</span>
               </label>
               <div className="relative">
                 <Car className="h-4 w-4 text-gray-400 absolute left-3 top-3.5" />
                 <select
-                  className="w-full rounded-xl border text=black bg-white pl-9 pr-3 py-3 text-sm focus:outline-none focus:ring-2"
+                  className="w-full rounded-xl border text-black bg-white pl-9 pr-3 py-3 text-sm focus:outline-none focus:ring-2"
                   style={{ outlineColor: BRAND.orange }}
                   value={vehicleType}
                   onChange={(e) =>
@@ -377,9 +439,7 @@ export default function PostJobPage() {
             </div>
 
             <div className="space-y-1">
-              <label
-                className="text-sm font-semibold text-gray-900 dark:text-slate-100
-">
+              <label className="text-sm font-semibold text-gray-900">
                 Pay (R) <span className="text-rose-600">*</span>
               </label>
               <div className="relative">
@@ -397,9 +457,7 @@ export default function PostJobPage() {
             </div>
 
             <div className="space-y-1">
-              <label
-                className="text-sm font-semibold text-gray-900 dark:text-slate-100
-">
+              <label className="text-sm font-semibold text-gray-900">
                 Expiry Date <span className="text-rose-600">*</span>
               </label>
               <div className="relative">
@@ -420,7 +478,7 @@ export default function PostJobPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || creditsLoading}
             className="w-full rounded-xl py-3 text-sm font-semibold text-white shadow-sm transition active:scale-[0.99] disabled:opacity-60"
             style={{
               background: `linear-gradient(90deg, ${BRAND.orange}, ${BRAND.red})`,
@@ -431,12 +489,13 @@ export default function PostJobPage() {
                 Posting…
               </span>
             ) : (
-              "Post Job"
+              "Post Job (–1 credit)"
             )}
           </button>
 
           <p className="text-xs text-gray-500">
-            Tip: Always review AI-filled details before posting.
+            Tip: Always review AI-filled details before posting. Each job
+            posting costs 1 credit.
           </p>
         </form>
       </div>

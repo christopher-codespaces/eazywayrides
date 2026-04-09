@@ -1,0 +1,255 @@
+rules_version = "2";
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------
+    // Helpers
+    // -------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // ✅ Admin check (reads role from /users/{uid})
+    function isAdmin() {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    // Keep Firestore role for driver/business checks (optional but common)
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && exists(userPath(request.auth.uid));
+    }
+
+    function userDoc(uid) {
+      return get(userPath(uid));
+    }
+
+    function role() {
+      return hasUserDoc() ? userDoc(request.auth.uid).data.role : null;
+    }
+
+    function isBusiness() {
+      return isSignedIn() && role() == "business";
+    }
+
+    function isDriver() {
+      return isSignedIn() && role() == "driver";
+    }
+
+    // ✅ All fields your client code may write to /users/{uid}
+    function allowedUserKeys() {
+      return [
+        "email",
+        "role",
+        "phone",
+        "name",
+        "firstName",
+        "lastName",
+        "homeAddress",
+        "homeLat",
+        "homeLon",
+        "businessName",
+        "businessLocation",
+        "businessDescription",
+        "credits",
+        "createdAt",
+        "updatedAt",
+        "lastLoginAt",
+
+        // ✅ ADDED (required for quiz progress writes)
+        "trainingProgress",
+        "lastTrainingUpdatedAt"
+      ];
+    }
+
+    // -------------------------
+    // USERS
+    // -------------------------
+    match /users/{uid} {
+
+      // Read: admin can read any user, user can read self
+      allow get: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+
+      // List users: admin only
+      allow list: if isAdmin();
+
+      // Create: allow user to create own doc; role can be null/driver/business
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(allowedUserKeys())
+        && (
+          !("role" in request.resource.data)
+          || request.resource.data.role == null
+          || request.resource.data.role in ["driver", "business"]
+        );
+
+      // Update:
+      // - Admin can update any user doc (but cannot set role="admin" in Firestore)
+      // - User can update self, with role set once from null -> driver/business
+      allow update: if (
+        isAdmin()
+        && request.resource.data.keys().hasOnly(allowedUserKeys())
+        && (
+          !("role" in request.resource.data)
+          || request.resource.data.role == null
+          || request.resource.data.role in ["driver", "business"]
+        )
+      ) || (
+        isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(allowedUserKeys())
+        && (
+          // role unchanged
+          request.resource.data.role == resource.data.role
+          // OR role set once from null/missing -> driver/business
+          || (
+            ( !("role" in resource.data) || resource.data.role == null )
+            && (request.resource.data.role in ["driver", "business"])
+          )
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    // -------------------------
+    // DRIVER DOCUMENTS
+    // -------------------------
+    match /driverDocuments/{docId} {
+
+      allow create: if isDriver()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == "uploaded"
+        && request.resource.data.docType in ["id","drivers_license","proof_of_address","vehicle_registration"]
+        && request.resource.data.keys().hasOnly([
+          "uid","docType","fileName","fileType","fileSize","storagePath","downloadURL","status","createdAt"
+        ]);
+
+      // Admin can read all, driver can read own
+      allow read: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------
+    // JOBS
+    // -------------------------
+    match /jobs/{jobId} {
+      // Public read (leave as-is)
+      allow get, list, read: if true;
+
+      // Create: business only
+      allow create: if isBusiness()
+        && request.resource.data.businessId == request.auth.uid;
+
+      // Update:
+      allow update: if isAdmin()
+        || (
+          isBusiness()
+          && request.auth.uid == resource.data.businessId
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(["status"])
+          && (request.resource.data.status in ["open", "closed"])
+        );
+
+      // Delete: admin only
+      allow delete: if isAdmin();
+
+      // Applications subcollection
+      match /applications/{applicationId} {
+
+        allow create: if isDriver()
+          && applicationId == request.auth.uid;
+
+        allow get, read: if isAdmin()
+          || (
+            isBusiness()
+            && request.auth.uid == get(/databases/$(database)/documents/jobs/$(jobId)).data.businessId
+          )
+          || (
+            isDriver()
+            && request.auth.uid == applicationId
+          );
+
+        allow update: if isAdmin()
+          || (
+            isBusiness()
+            && request.auth.uid == get(/databases/$(database)/documents/jobs/$(jobId)).data.businessId
+          )
+          || (
+            isDriver()
+            && request.auth.uid == applicationId
+          );
+
+        allow delete: if false;
+      }
+    }
+
+    // -------------------------
+    // THREADS
+    // -------------------------
+    match /threads/{threadId} {
+
+      function ownsJob(jobId) {
+        return isSignedIn()
+          && get(/databases/$(database)/documents/jobs/$(jobId)).data.businessId == request.auth.uid;
+      }
+
+      function isThreadParticipant() {
+        return isSignedIn()
+          && (request.auth.uid == resource.data.businessId
+              || request.auth.uid == resource.data.driverId);
+      }
+
+      function isThreadParticipantViaGet() {
+        return isSignedIn()
+          && (
+            request.auth.uid
+              == get(/databases/$(database)/documents/threads/$(threadId)).data.businessId
+            || request.auth.uid
+              == get(/databases/$(database)/documents/threads/$(threadId)).data.driverId
+          );
+      }
+
+      allow get: if isAdmin() || isThreadParticipant();
+      allow list: if isAdmin() || isThreadParticipant();
+
+      allow create: if isAdmin() || (
+        isBusiness()
+        && request.resource.data.businessId == request.auth.uid
+        && request.resource.data.jobId is string
+        && request.resource.data.driverId is string
+        && threadId == (request.resource.data.jobId + "_" + request.resource.data.driverId)
+        && ownsJob(request.resource.data.jobId)
+      );
+
+      allow update: if isAdmin() || (
+        isThreadParticipant()
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(["lastMessageAt","lastMessageText"])
+      );
+
+      allow delete: if false;
+
+      match /messages/{messageId} {
+
+        allow get, read: if isAdmin() || isThreadParticipantViaGet();
+
+        allow create: if (isAdmin() || isThreadParticipantViaGet())
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 5000
+          && (
+            (isBusiness() && request.resource.data.senderRole == "business") ||
+            (isDriver() && request.resource.data.senderRole == "driver") ||
+            isAdmin()
+          );
+
+        allow update, delete: if false;
+      }
+    }
+  }
+}

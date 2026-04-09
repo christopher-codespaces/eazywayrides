@@ -85,7 +85,7 @@ Return JSON only.
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         // Optional, but recommended by OpenRouter:
-        "HTTP-Referer": "http://localhost:3000",
+        "HTTP-Referer": process.env.APP_URL || "https://eazywayrides.com",
         "X-Title": "EazyWayRides",
       },
       body: JSON.stringify({

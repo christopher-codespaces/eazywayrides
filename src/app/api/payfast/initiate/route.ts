@@ -1,204 +1,228 @@
-// src/app/api/payfast/initiate/route.ts
-import { NextResponse } from "next/server";
-import crypto from "crypto";
-import { getAuth } from "firebase-admin/auth";
-import { getAdminApp } from "@/lib/firebaseAdmin.server"; // <- your helper file
+/**
+ * PayFast payment initiation endpoint.
+ *
+ * SECURITY: The signature is generated server-side ONLY. The frontend receives
+ * the signed payload and uses it to redirect the user to PayFast. The passphrase
+ * is never known by the frontend.
+ *
+ * Frontend flow:
+ *  1. Client calls POST /api/payfast/initiate with planId
+ *  2. We create a pending payment doc in Firestore (credits NOT yet added)
+ *  3. We return signed payment data (paymentUrl + data with signature)
+ *  4. Frontend redirects user to PayFast with the signed data
+ *  5. PayFast POSTs ITN to our /api/payfast/itn (server-to-server)
+ *  6. ITN handler verifies signature + validates with PayFast + updates Firestore
+ *  7. User is redirected to /success or /cancel (frontend polling only)
+ *
+ * The return_url/cancel_url are for user experience only — they NEVER trigger
+ * credit updates. Only the ITN (verified) causes credits to be added.
+ */
 
+import crypto from "crypto";
+import { NextRequest, NextResponse } from "next/server";
+import { getFirestore } from "firebase-admin/firestore";
+import { getAdminAuth } from "@/lib/firebaseAdmin";
+
+export const runtime = "nodejs";
+
+const PAYFAST_MERCHANT_ID = String(process.env.PAYFAST_MERCHANT_ID ?? "").trim();
+const PAYFAST_MERCHANT_KEY = String(process.env.PAYFAST_MERCHANT_KEY ?? "").trim();
+const PAYFAST_PASSPHRASE = String(process.env.PAYFAST_PASSPHRASE ?? "").trim();
+const PAYFAST_MODE = process.env.PAYFAST_MODE ?? "live";
+const APP_URL = String(process.env.APP_URL ?? "").trim();
+
+/**
+ * PHP-style URL encode:
+ * - Spaces become + (not %20)
+ * - Special chars !'()* get encoded
+ */
+function phpUrlEncode(str: string): string {
+  return encodeURIComponent(str)
+    .replace(/%20/g, "+")
+    .replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+}
+
+/**
+ * Strict field ordering for PayFast signature.
+ * DO NOT use Object.entries - order must be EXACT.
+ */
+const ORDERED_KEYS = [
+  "merchant_id",
+  "merchant_key",
+  "return_url",
+  "cancel_url",
+  "notify_url",
+  "m_payment_id",
+  "amount",
+  "item_name",
+] as const;
+
+// Build these dynamically to support sandbox vs live
+const PAYFAST_HOST =
+  PAYFAST_MODE === "sandbox" ? "sandbox.payfast.co.za" : "www.payfast.co.za";
+const PAYFAST_PROCESS_URL = `https://${PAYFAST_HOST}/eng/process`;
+
+// Plan definitions (must match frontend BUNDLES)
 type PlanId = "starter_3" | "growth_8" | "scale_20" | "enterprise_custom";
 
-const BUNDLES: Record<
-  PlanId,
-  { label: string; price: number; credits: number }
-> = {
-  starter_3: { label: "Starter Bundle (3 credits)", price: 499, credits: 3 },
-  growth_8: { label: "Growth Bundle (8 credits)", price: 1199, credits: 8 },
-  scale_20: { label: "Scale Bundle (20 credits)", price: 2499, credits: 20 },
-  enterprise_custom: {
-    label: "Enterprise (21 credits / deposit)",
-    price: 2999,
-    credits: 21,
-  },
+const PLAN_AMOUNTS: Record<PlanId, { amount: number; credits: number; name: string }> = {
+  starter_3:         { amount: 49900, credits: 3,  name: "Starter Plan – 3 Job Credits" },
+  growth_8:          { amount: 119900, credits: 8, name: "Growth Plan – 8 Job Credits" },
+  scale_20:          { amount: 249900, credits: 20, name: "Scale Plan – 20 Job Credits" },
+  enterprise_custom: { amount: 299900, credits: 21, name: "Enterprise Plan – 21+ Job Credits" },
 };
 
-function toQueryString(params: Record<string, string>) {
-  // PayFast wants normal URL encoding, spaces as + is okay, but encodeURIComponent is fine here.
-  return Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== null && String(v).length > 0)
-    .map(([k, v]) => `${k}=${encodeURIComponent(String(v).trim())}`)
-    .join("&");
+function getReturnUrl(appUrl: string) {
+  return `${appUrl}/business/buy-credits/success`;
 }
 
-function makeSignature(params: Record<string, string>, passphrase?: string) {
-  // 1) Sort params alphabetically by key
-  const sortedKeys = Object.keys(params).sort();
-  const sortedParams: Record<string, string> = {};
-  for (const k of sortedKeys) sortedParams[k] = params[k];
-
-  // 2) Build query string
-  let qs = toQueryString(sortedParams);
-
-  // 3) Append passphrase if provided
-  if (passphrase && passphrase.trim().length > 0) {
-    qs += `&passphrase=${encodeURIComponent(passphrase.trim())}`;
-  }
-
-  // 4) MD5 hash
-  return crypto.createHash("md5").update(qs).digest("hex");
+function getCancelUrl(appUrl: string) {
+  return `${appUrl}/business/buy-credits/cancel`;
 }
 
-export async function POST(req: Request) {
-  const tag = `[payfast/initiate]`;
+function getNotifyUrl(appUrl: string) {
+  return `${appUrl}/api/payfast/itn`;
+}
+
+export async function POST(req: NextRequest) {
+  const requestId = crypto.randomUUID();
 
   try {
-    // -------------------------
-    // 1) Parse body
-    // -------------------------
-    const body = await req.json().catch(() => null);
-    const planId = body?.planId as PlanId | undefined;
+    // ── 1) Authenticate ──────────────────────────────────────────
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const idToken = authHeader.replace("Bearer ", "").trim();
+    if (!idToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    console.log(tag, "Incoming body:", body);
+    const decoded = await getAdminAuth().verifyIdToken(idToken);
+    const uid = decoded.uid;
 
-    if (!planId || !(planId in BUNDLES)) {
+    // ── 2) Parse body ────────────────────────────────────────────
+    const body = await req.json();
+    const planId = body.planId as PlanId;
+
+    const plan = PLAN_AMOUNTS[planId];
+    if (!plan) {
+      return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+    }
+
+    // ── 3) Validate required env vars ────────────────────────────
+    if (!PAYFAST_MERCHANT_ID || !PAYFAST_MERCHANT_KEY) {
+      console.error(`[${requestId}] Missing PAYFAST_MERCHANT_ID or PAYFAST_MERCHANT_KEY`);
+      return NextResponse.json({ error: "Missing PayFast credentials" }, { status: 500 });
+    }
+
+    if (!APP_URL) {
+      console.error(`[${requestId}] Missing APP_URL`);
+      return NextResponse.json({ error: "Missing APP_URL" }, { status: 500 });
+    }
+
+    // Block localhost — PayFast requires a public notify_url
+    if (
+      APP_URL.includes("localhost") ||
+      APP_URL.includes("127.0.0.1") ||
+      APP_URL.includes("0.0.0.0")
+    ) {
+      console.error(`[${requestId}] APP_URL cannot be localhost: ${APP_URL}`);
       return NextResponse.json(
-        { error: "Invalid planId", received: planId || null },
-        { status: 400 },
+        { error: "APP_URL must be a public domain — no localhost allowed." },
+        { status: 500 }
       );
     }
 
-    // -------------------------
-    // 2) Verify Firebase ID token (get uid)
-    // -------------------------
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.slice("Bearer ".length)
-      : "";
+    // ── 4) Get user email from Firestore ────────────────────────
+    const db = getFirestore();
+    const userDoc = await db.collection("users").doc(uid).get();
+    const email = userDoc.data()?.email ?? decoded.email ?? "";
 
-    console.log(tag, "Auth header present:", Boolean(authHeader));
-    console.log(tag, "Token length:", token?.length || 0);
+    // ── 5) Create m_payment_id (matches Firestore payment doc id) ─
+    const mPaymentId = `${uid}__${planId}__${Date.now()}`;
 
-    if (!token) {
-      return NextResponse.json(
-        { error: "Missing Authorization Bearer token" },
-        { status: 401 },
-      );
-    }
+    // ── 6) Build PayFast form params WITH signature ───────────────
+    //    Amount is stored as INTEGER CENTS, convert to decimal string for PayFast
+    const formattedAmount = (plan.amount / 100).toFixed(2);
 
-    const adminApp = getAdminApp();
-    const decoded = await getAuth(adminApp).verifyIdToken(token);
-    const uid = decoded?.uid;
-
-    console.log(tag, "Decoded uid:", uid);
-
-    if (!uid) {
-      return NextResponse.json({ error: "Missing uid" }, { status: 400 });
-    }
-
-    // -------------------------
-    // 3) Read env
-    // -------------------------
-    const merchant_id = process.env.PAYFAST_MERCHANT_ID || "";
-    const merchant_key = process.env.PAYFAST_MERCHANT_KEY || "";
-    const passphrase = process.env.PAYFAST_PASSPHRASE || "";
-    const appUrl = process.env.APP_URL || "http://localhost:3000";
-    const mode = (process.env.PAYFAST_MODE || "sandbox").toLowerCase(); // "sandbox" | "live"
-
-    const payfastHost =
-      mode === "live"
-        ? "https://www.payfast.co.za/eng/process"
-        : "https://sandbox.payfast.co.za/eng/process";
-
-    console.log(tag, "Mode:", mode);
-    console.log(tag, "APP_URL:", appUrl);
-    console.log(tag, "Merchant id present:", Boolean(merchant_id));
-    console.log(tag, "Merchant key present:", Boolean(merchant_key));
-
-    // Helpful “sanity before sleeping” response if you haven’t set credentials yet
-    if (!merchant_id || !merchant_key) {
-      return NextResponse.json(
-        {
-          error:
-            "Missing PAYFAST_MERCHANT_ID or PAYFAST_MERCHANT_KEY in env. Add them and restart dev server.",
-          debug: {
-            mode,
-            planId,
-            uid,
-            appUrl,
-            merchant_id_present: Boolean(merchant_id),
-            merchant_key_present: Boolean(merchant_key),
-          },
-        },
-        { status: 400 },
-      );
-    }
-
-    // -------------------------
-    // 4) Build PayFast params
-    // -------------------------
-    const bundle = BUNDLES[planId];
-    const item_name = bundle.label;
-    const amount = bundle.price.toFixed(2);
-
-    // Unique payment id (you can use this as payments doc id later)
-    const m_payment_id = `pf_${uid}_${planId}_${Date.now()}`;
-
-    const return_url = `${appUrl}/business/buy-credits/success`;
-    const cancel_url = `${appUrl}/business/buy-credits/cancel`;
-    const notify_url = `${appUrl}/api/payfast/itn`;
-
-    const params: Record<string, string> = {
-      merchant_id,
-      merchant_key,
-      return_url,
-      cancel_url,
-      notify_url,
-
-      // Buyer details (optional; keep empty for MVP)
-      name_first: "",
-      name_last: "",
-      email_address: "",
-
-      m_payment_id,
-      amount,
-      item_name,
-      item_description: planId, // store planId here too
-
-      // Super simple linking for ITN
-      custom_str1: uid,
-      custom_str2: planId,
+    const payfastParams: Record<string, string> = {
+      merchant_id:    PAYFAST_MERCHANT_ID,
+      merchant_key:   PAYFAST_MERCHANT_KEY,
+      return_url:     getReturnUrl(APP_URL),
+      cancel_url:     getCancelUrl(APP_URL),
+      notify_url:     getNotifyUrl(APP_URL),
+      m_payment_id:   mPaymentId,
+      amount:         formattedAmount,
+      item_name:      plan.name,
     };
 
-    // -------------------------
-    // 5) Signature + redirect url
-    // -------------------------
-    const signature = makeSignature(params, passphrase);
-    const redirectUrl = `${payfastHost}?${toQueryString({ ...params, signature })}`;
+    // ── 7) Generate signature ────────────────────────────────────
+    // Build param string in strict field order
+    let paramString = "";
+    ORDERED_KEYS.forEach((key) => {
+      const value = payfastParams[key];
+      if (value !== undefined && value !== null && value !== "") {
+        paramString += `${key}=${phpUrlEncode(value)}&`;
+      }
+    });
+    paramString = paramString.slice(0, -1); // Remove trailing &
 
-    console.log(tag, "m_payment_id:", m_payment_id);
-    console.log(
-      tag,
-      "redirectUrl (first 120 chars):",
-      redirectUrl.slice(0, 120),
+    // Append passphrase
+    paramString += `&passphrase=${phpUrlEncode(PAYFAST_PASSPHRASE)}`;
+
+    // Generate MD5 signature
+    const signature = crypto.createHash("md5").update(paramString).digest("hex");
+
+    // ── MANDATORY LOGGING ─────────────────────────────────────────
+    console.log(`[PayFast] paymentId: ${mPaymentId}`);
+    console.log(`[PayFast] raw amount (cents): ${plan.amount}`);
+    console.log(`[PayFast] formatted amount: ${formattedAmount}`);
+    console.log(`[PayFast] paramString BEFORE hash: ${paramString}`);
+    console.log(`[PayFast] generated signature: ${signature}`);
+
+    // Build final data object with signature
+    const data = {
+      ...payfastParams,
+      signature,
+    };
+
+    // ── 8) Create pending payment record in Firestore ───────────
+    //    amount is stored as INTEGER CENTS (required for idempotent amount
+    //    comparison in the ITN handler to avoid float math issues).
+    const paymentRef = db.collection("payments").doc(mPaymentId);
+
+    await paymentRef.set(
+      {
+        userId: uid,
+        planId,
+        bundle: planId,
+        amount: plan.amount, // integer cents
+        credits: plan.credits,
+        status: "pending",
+        m_payment_id: mPaymentId,
+        createdAt: new Date(),
+      },
+      { merge: true }
     );
 
-    // -------------------------
-    // 6) Return redirect url
-    // -------------------------
-    return NextResponse.json({
-      redirectUrl,
-      m_payment_id,
+    // ── 9) Return redirect URL and data to frontend ──────────────
+    console.log(`[${requestId}] Payment initiated`, {
       uid,
       planId,
-      amount,
-      mode,
+      m_payment_id: mPaymentId,
+      amount: plan.amount,
+      credits: plan.credits,
+      mode: PAYFAST_MODE,
     });
-  } catch (err: any) {
-    console.error(tag, "ERROR:", err);
+
+    return NextResponse.json({
+      paymentUrl: PAYFAST_PROCESS_URL,
+      data,
+    }, { status: 200 });
+
+  } catch (err) {
+    console.error(`[${requestId}] initiate error:`, err);
     return NextResponse.json(
-      {
-        error: err?.message || "Server error",
-        hint: "Check server logs (terminal) for full stack trace.",
-      },
-      { status: 500 },
+      { error: err instanceof Error ? err.message : "Server error" },
+      { status: 500 }
     );
   }
 }

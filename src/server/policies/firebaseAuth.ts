@@ -32,10 +32,15 @@ export async function getAuthClaimsFromRequest(request: Request): Promise<AuthCl
 
   const decoded = await getAdminAuth().verifyIdToken(token);
 
+  // Handle both legacy role claim and new admin:boolean claim
+  // admin: true takes precedence for backward compatibility
+  const isAdmin = decoded.admin === true;
+  const role = isAdmin ? "admin" : ((decoded as any).role ?? "unknown");
+
   // Only minimal fields are returned. Unknown fields are handled downstream.
   return {
     uid: decoded.uid,
-    role: (decoded as any).role,
+    role,
     businessId: (decoded as any).businessId,
   };
 }

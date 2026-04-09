@@ -41,6 +41,7 @@ import type { DriversRepoDeps } from "../repositories/drivers.repo";
 import type { JobsRepoDeps } from "../repositories/jobs.repo";
 import { getDriverForScreening, getDriversForMatching } from "../repositories/drivers.repo";
 import { getJobForMatching } from "../repositories/jobs.repo";
+import { consumeCredit } from "@/lib/credits.server";
 
 /**
  * Route dependencies required by handlers.
@@ -97,6 +98,18 @@ export async function handleDriverScreening(params: {
   try {
     const authed = requireAuth(params.user);
     requireRole(authed, ["business", "admin"]);
+
+    // Check and consume credit before processing
+    const creditResult = await consumeCredit(authed.uid);
+    if (!creditResult.success) {
+      if (creditResult.reason === "NO_CREDITS") {
+        return { status: 402, body: { error: "NO_CREDITS" } };
+      }
+      if (creditResult.reason === "USER_NOT_FOUND") {
+        return { status: 404, body: { error: "USER_NOT_FOUND" } };
+      }
+      return { status: 500, body: { error: "CREDIT_CHECK_FAILED" } };
+    }
 
     // Rate limit: protects abuse and prevents runaway evaluation costs.
     assertRateLimit(rateKey("screening", authed), { limit: 30, windowMs: 60_000 });
@@ -167,6 +180,18 @@ export async function handleJobMatching(params: {
   try {
     const authed = requireAuth(params.user);
     requireRole(authed, ["business", "admin"]);
+
+    // Check and consume credit before processing
+    const creditResult = await consumeCredit(authed.uid);
+    if (!creditResult.success) {
+      if (creditResult.reason === "NO_CREDITS") {
+        return { status: 402, body: { error: "NO_CREDITS" } };
+      }
+      if (creditResult.reason === "USER_NOT_FOUND") {
+        return { status: 404, body: { error: "USER_NOT_FOUND" } };
+      }
+      return { status: 500, body: { error: "CREDIT_CHECK_FAILED" } };
+    }
 
     assertRateLimit(rateKey("matching", authed), { limit: 60, windowMs: 60_000 });
 

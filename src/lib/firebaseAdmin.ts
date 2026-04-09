@@ -131,6 +131,21 @@ export function getAdminAuth() {
 }
 
 /**
+ * Sets Firebase Custom Claims to grant admin role.
+ *
+ * Usage:
+ *   await makeUserAdmin("uid-here");
+ *
+ * Note: After calling this, the user must refresh their ID token:
+ *   await auth.currentUser.getIdToken(true);
+ */
+export async function makeUserAdmin(uid: string): Promise<void> {
+  const auth = getAdminAuth();
+  await auth.setCustomUserClaims(uid, { admin: true });
+  console.log(`User ${uid} is now an admin`);
+}
+
+/**
  * Firebase Admin Firestore (server-only).
  * Used for privileged repository access.
  */

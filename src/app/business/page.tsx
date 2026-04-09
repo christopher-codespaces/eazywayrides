@@ -9,6 +9,7 @@ import {
   Sparkles,
   ArrowRight,
 } from "lucide-react";
+import CreditBadge from "@/components/CreditBadge";
 
 const BRAND = {
   orange: "#F36C21",
@@ -45,13 +46,16 @@ export default function BusinessDashboardPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => router.push("/business/post-job")}
-            className="hidden md:inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition active:scale-[0.99]"
-            style={{ backgroundColor: BRAND.orange }}>
-            Post a Job
-            <ArrowRight className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-3">
+            <CreditBadge />
+            <button
+              onClick={() => router.push("/business/post-job")}
+              className="hidden md:inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition active:scale-[0.99]"
+              style={{ backgroundColor: BRAND.orange }}>
+              Post a Job
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
         </header>
 
         {/* Top stats */}

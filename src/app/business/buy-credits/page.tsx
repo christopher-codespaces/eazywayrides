@@ -14,6 +14,7 @@ import {
 
 import { app } from "@/lib/firebase";
 import { getAuth } from "firebase/auth";
+import CreditBadge from "@/components/CreditBadge";
 
 const BRAND = {
   orange: "#F36C21",
@@ -123,163 +124,108 @@ export default function BuyCredits() {
     [],
   );
 
-//   const startCheckout = async (planId: PlanId) => {
-//     setError(null);
-//     setLoadingPlan(planId);
+// ─── PayFast Form Redirect (no window.location, no redirectUrl) ───────────────
+/**
+ * Initiate a PayFast payment by:
+ *  1. Calling POST /api/payfast/initiate with planId + auth
+ *  2. Receiving { paymentUrl, data } where data contains all PayFast fields + signature
+ *  3. Building an HTML <form method="POST" action={paymentUrl}>
+ *  4. Adding every field from data as a hidden <input>
+ *  5. Appending the form to DOM and calling form.submit()
+ *
+ * ❌ Does NOT use window.location.href
+ * ❌ Does NOT expect redirectUrl
+ * ❌ Does not send JSON directly to PayFast
+ */
+async function initiatePayfastPayment(
+  planId: string,
+  idToken: string
+): Promise<never> {
+  // 1) Call backend
+  const res = await fetch("/api/payfast/initiate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ planId }),
+  });
 
-//     console.group("🧾 PayFast Checkout Debug");
-//     console.log("Selected plan:", planId);
+  // 2) Parse response
+  const result = await res.json();
 
-//     try {
-//       if (!auth) {
-//         throw new Error("Firebase auth not initialised.");
-//       }
+  if (!res.ok) {
+    throw new Error(result?.error || `Backend error (${res.status})`);
+  }
 
-//       const user = auth.currentUser;
-//       console.log(
-//         "Current user:",
-//         user ? { uid: user.uid, email: user.email } : null,
-//       );
+  const { paymentUrl, data } = result;
 
-//       if (!user) {
-//         throw new Error("Not logged in. Please log in as a business first.");
-//       }
+  // 3) Strict validation — backend returns { paymentUrl, data }
+  if (!paymentUrl || !data) {
+    throw new Error("Invalid PayFast response: missing paymentUrl or data");
+  }
 
-//       // This is the important part: get the ID token so the API can derive uid securely
-//       const idToken = await user.getIdToken(true);
-//       console.log(
-//         "Got idToken:",
-//         idToken ? `✅ length=${idToken.length}` : "❌ none",
-//       );
+  if (!data.signature) {
+    throw new Error("Missing PayFast signature");
+  }
 
-//       console.log("Sending request to /api/payfast/initiate...");
+  if (!data.amount) {
+    throw new Error("Missing amount");
+  }
 
-//       const res = await fetch("/api/payfast/initiate", {
-//         method: "POST",
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization: `Bearer ${idToken}`,
-//         },
-//         body: JSON.stringify({ bundle: planId }),
-//       });
+  // 4) Debug logging (mandatory)
+  console.log("PayFast URL:", paymentUrl);
+  console.log("PayFast Data:", data);
 
-//       console.log("Response status:", res.status, res.statusText);
+  // 5) Build HTML form dynamically
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = paymentUrl;
+  form.style.display = "none";
 
-//       // Safely read body (could be JSON or text)
-//       const rawText = await res.text();
-//       console.log("Raw response text:", rawText);
+  // 6) Add ALL fields from data as hidden inputs
+  Object.entries(data).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = String(value);
+      form.appendChild(input);
+    }
+  });
 
-//       let data: any = null;
-//       try {
-//         data = rawText ? JSON.parse(rawText) : null;
-//         console.log("Parsed JSON response:", data);
-//       } catch {
-//         console.warn("Response was not JSON (that is okay for debugging).");
-//       }
+  // 7) Append to DOM and submit programmatically
+  document.body.appendChild(form);
+  form.submit();
 
-//       if (!res.ok) {
-//         throw new Error(
-//           data?.error || `Backend returned non-OK status (${res.status}).`,
-//         );
-//       }
+  // The function returns never — user is now on PayFast
+  throw new Error("Should never reach here after form.submit()");
+}
 
-//       const redirectUrl = data?.redirectUrl as string | undefined;
-//       if (!redirectUrl)
-//         throw new Error("Payment setup returned no redirectUrl.");
-
-//       console.log("Redirecting to:", redirectUrl);
-//       console.groupEnd();
-
-//       window.location.href = redirectUrl;
-//     } catch (e: any) {
-//       console.error("Checkout error:", e);
-//       console.groupEnd();
-//       setError(e?.message || "Payment setup failed.");
-//       setLoadingPlan(null);
-//     }
-//   };
+// ─── Checkout entrypoint ────────────────────────────────────────────────────────
 
 const startCheckout = async (planId: PlanId) => {
   setError(null);
   setLoadingPlan(planId);
 
-  console.group("🧾 PayFast Checkout Debug");
-  console.log("Selected plan:", planId);
-
   try {
-    // If you have auth from firebase client SDK, import it and use it here.
-    // Example: import { getAuth } from "firebase/auth"; import { app } from "@/lib/firebase";
-    // const auth = getAuth(app);
-
     if (!auth) {
       throw new Error("Firebase auth not initialised.");
     }
 
     const user = auth.currentUser;
-    console.log(
-      "Current user:",
-      user ? { uid: user.uid, email: user.email } : null,
-    );
-
     if (!user) {
       throw new Error("Not logged in. Please log in as a business first.");
     }
 
-    // Get a fresh ID token so the API can securely derive uid
     const idToken = await user.getIdToken(true);
-    console.log(
-      "Got idToken:",
-      idToken ? `✅ length=${idToken.length}` : "❌ none",
-    );
 
-    // Helpful sanity logs
-    console.log("Authorization header set:", Boolean(idToken));
-    console.log("Request body:", { planId });
-
-    console.log("Sending request to /api/payfast/initiate...");
-
-    const res = await fetch("/api/payfast/initiate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({ planId }),
-    });
-
-    console.log("Response status:", res.status, res.statusText);
-
-    // Read body safely (could be JSON or text/HTML)
-    const rawText = await res.text();
-    console.log("Raw response text:", rawText);
-
-    let data: any = null;
-    try {
-      data = rawText ? JSON.parse(rawText) : null;
-      console.log("Parsed JSON response:", data);
-    } catch {
-      console.warn("Response was not JSON (ok for debugging).");
-    }
-
-    if (!res.ok) {
-      throw new Error(
-        data?.error || `Backend returned non-OK status (${res.status}).`,
-      );
-    }
-
-    const redirectUrl = data?.redirectUrl as string | undefined;
-    if (!redirectUrl) throw new Error("Payment setup returned no redirectUrl.");
-
-    console.log("Redirecting to:", redirectUrl);
-    console.groupEnd();
-
-    window.location.href = redirectUrl;
+    // Uses form POST approach via initiatePayfastPayment
+    await initiatePayfastPayment(planId, idToken);
   } catch (e: any) {
-    console.error("Checkout error:", e);
-    console.groupEnd();
     setError(e?.message || "Payment setup failed.");
     setLoadingPlan(null);
-  
+  }
 };
   return (
     <div className="min-h-screen bg-gray-50 pt-14 pb-20 md:pt-10 md:pb-10">
@@ -301,12 +247,15 @@ const startCheckout = async (planId: PlanId) => {
             </p>
           </div>
 
-          <button
-            onClick={() => router.push("/business")}
-            className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition active:scale-[0.99]">
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
+          <div className="flex items-center gap-3">
+            <CreditBadge />
+            <button
+              onClick={() => router.push("/business")}
+              className="inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition active:scale-[0.99]">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+          </div>
         </div>
 
         {/* Error */}

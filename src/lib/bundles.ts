@@ -4,7 +4,8 @@ export type BundleId =
   | "growth_single"
   | "growth_8"
   | "scale_single"
-  | "scale_20";
+  | "scale_20"
+  | "enterprise_custom";
 
 export const BUNDLES: Record<
   BundleId,
@@ -18,4 +19,10 @@ export const BUNDLES: Record<
 
   scale_single: { label: "Scale: 1 job", price: 149, credits: 1 },
   scale_20: { label: "Scale Bundle: 20 jobs", price: 2499, credits: 20 },
+
+  enterprise_custom: {
+    label: "Enterprise (21+ credits / deposit)",
+    price: 2999,
+    credits: 21,
+  },
 };

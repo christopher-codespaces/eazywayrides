@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { adminAuth } from "./firebaseAdmin";
+import { getAdminAuth } from "./firebaseAdmin";
 
 export async function requireAuth() {
   const cookieStore = await cookies(); // 👈 await is REQUIRED now
@@ -9,6 +9,6 @@ export async function requireAuth() {
     throw new Error("UNAUTHENTICATED");
   }
 
-  const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
+  const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
   return decoded;
 }
