@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { app } from "@/lib/firebase";
@@ -14,7 +14,7 @@ const PLAN_NAMES: Record<string, string> = {
   enterprise_custom: "Enterprise Plan (21+ credits)",
 };
 
-export default function PaymentSuccess() {
+function PaymentSuccessContent() {
   const router = useRouter();
   const params = useSearchParams();
   const planId = params.get("plan") ?? "";
@@ -63,5 +63,20 @@ export default function PaymentSuccess() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function PaymentSuccess() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="bg-white rounded-2xl border shadow-sm p-8 max-w-md w-full text-center">
+          <Loader2 className="h-8 w-8 text-emerald-600 animate-spin mx-auto" />
+          <p className="text-sm text-gray-500 mt-4">Loading…</p>
+        </div>
+      </div>
+    }>
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }

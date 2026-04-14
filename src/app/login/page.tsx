@@ -10,7 +10,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
 } from "firebase/auth";
-import { initFirebaseClient } from "@/lib/firebaseClient";
+import { initFirebaseClient, app } from "@/lib/firebaseClient";
 import {
   getFirestore,
   doc,

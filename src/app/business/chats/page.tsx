@@ -12,6 +12,7 @@ import {
   getDocs,
 } from "firebase/firestore";
 import { app } from "@/lib/firebase";
+import dynamic from "next/dynamic";
 
 // Optional: if you already have lucide-react installed (you used it earlier),
 // this makes the UI feel much more "product".
@@ -59,7 +60,7 @@ function initials(name?: string) {
   return parts.map((p) => p[0]?.toUpperCase()).join("") || "DR";
 }
 
-export default function BusinessChatsPage() {
+function BusinessChatsPageContent() {
   const router = useRouter();
 
   // Use the "app" instance if your firebase wrapper expects it.
@@ -313,3 +314,9 @@ export default function BusinessChatsPage() {
     </div>
   );
 }
+
+const BusinessChatsPage = dynamic(() => Promise.resolve(BusinessChatsPageContent), {
+  ssr: false,
+});
+
+export default BusinessChatsPage;

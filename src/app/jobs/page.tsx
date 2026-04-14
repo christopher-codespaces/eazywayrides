@@ -14,7 +14,7 @@ import {
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { initFirebaseClient } from "@/lib/firebaseClient";
+import { initFirebaseClient, app } from "@/lib/firebaseClient";
 import { MapPin, Truck, Banknote, Calendar, Briefcase } from "lucide-react";
 
 // Shape of job docs we render in the UI
@@ -64,6 +64,7 @@ export default function DriverJobsPage() {
 
   useEffect(() => {
     if (!app) return;
+    let isMounted = true;
 
     const fetchJobs = async (): Promise<Job[]> => {
       if (!db) {

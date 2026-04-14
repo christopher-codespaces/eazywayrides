@@ -26,6 +26,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { app } from "@/lib/firebase";
+import dynamic from "next/dynamic";
 
 type Job = {
   id: string;
@@ -84,7 +85,7 @@ const StatusBadge = ({ status }: { status?: Job["computedStatus"] }) => {
   );
 };
 
-export default function PostedJobsPage() {
+function PostedJobsPageContent() {
   const auth = useMemo(() => getAuth(app), []);
   const db = useMemo(() => getFirestore(app), []);
   const router = useRouter();
@@ -514,3 +515,9 @@ export default function PostedJobsPage() {
     </div>
   );
 }
+
+const PostedJobsPage = dynamic(() => Promise.resolve(PostedJobsPageContent), {
+  ssr: false,
+});
+
+export default PostedJobsPage;

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
-import { initFirebaseClient } from "@/lib/firebaseClient";
+import { initFirebaseClient, app } from "@/lib/firebaseClient";
 import {
   getFirestore,
   doc,

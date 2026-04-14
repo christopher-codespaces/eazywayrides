@@ -24,6 +24,7 @@ import {
   MessageSquare,
   ChevronRight,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 
 type ApplicantRow = {
   id: string; // application doc id
@@ -48,7 +49,7 @@ function initials(name?: string) {
   return parts.map((p) => p[0]?.toUpperCase()).join("") || "DR";
 }
 
-export default function ApplicantsPage() {
+function ApplicantsPageContent() {
   const router = useRouter();
   const params = useParams<{ jobId: string }>();
   const jobId = params?.jobId;
@@ -332,3 +333,9 @@ export default function ApplicantsPage() {
     </div>
   );
 }
+
+const ApplicantsPage = dynamic(() => Promise.resolve(ApplicantsPageContent), {
+  ssr: false,
+});
+
+export default ApplicantsPage;

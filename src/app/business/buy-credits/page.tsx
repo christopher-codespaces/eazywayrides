@@ -15,6 +15,7 @@ import {
 import { app } from "@/lib/firebase";
 import { getAuth } from "firebase/auth";
 import CreditBadge from "@/components/CreditBadge";
+import dynamic from "next/dynamic";
 
 const BRAND = {
   orange: "#F36C21",
@@ -108,7 +109,7 @@ function money(n: number) {
   }).format(n);
 }
 
-export default function BuyCredits() {
+function BuyCreditsContent() {
   const router = useRouter();
   const auth = useMemo(() => (app ? getAuth(app) : null), []);
 
@@ -436,3 +437,9 @@ const startCheckout = async (planId: PlanId) => {
     </div>
   );
 }
+
+const BuyCredits = dynamic(() => Promise.resolve(BuyCreditsContent), {
+  ssr: false,
+});
+
+export default BuyCredits;
