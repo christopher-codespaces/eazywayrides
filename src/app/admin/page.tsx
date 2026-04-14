@@ -1,33 +1,27 @@
 "use client";
 
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
-import {useRouter} from "next/navigation";
-
-import { useAdminDashboardStats } from "./_hooks/useAdminDashboardStats";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-// Placeholder chart data (swap these with real Firestore stats later)
-// const userDistributionData = [
-//   { name: "Drivers", value: 60 },
-//   { name: "Businesses", value: 40 },
-// ];
+import { useAdminDashboardStats } from "./_hooks/useAdminDashboardStats";
 
-// const jobStatusData = [
-//   { name: "Open", value: 30 },
-//   { name: "In Progress", value: 50 },
-//   { name: "Completed", value: 20 },
-// ];
-
-// Chart colors (kept consistent with your Tailwind palette)
-const USER_COLORS = ["#2563eb", "#10b981"]; // blue, emerald
-const JOB_COLORS = ["#0ea5e9", "#4f46e5", "#22c55e"]; // sky, indigo, green
+// Dynamically import chart component with SSR disabled
+const ChartsClient = dynamic(() => import("./ChartsClient"), {
+  ssr: false,
+  loading: () => (
+    <div className="space-y-3">
+      <div className="p-3 md:p-4 bg-white rounded-lg shadow border space-y-3">
+        <div className="h-4 bg-gray-200 rounded w-1/3" />
+        <div className="h-56 bg-gray-100 rounded animate-pulse" />
+      </div>
+      <div className="p-3 md:p-4 bg-white rounded-lg shadow border space-y-3">
+        <div className="h-4 bg-gray-200 rounded w-1/3" />
+        <div className="h-56 bg-gray-100 rounded animate-pulse" />
+      </div>
+    </div>
+  ),
+});
 
 export default function AdminDashboardPage() {
   const [activeWindowMinutes, setActiveWindowMinutes] = useState(60);
@@ -39,21 +33,14 @@ export default function AdminDashboardPage() {
     activeUsersCount,
     jobsPostedCount,
     userDistributionData,
-    jobStatusData
+    jobStatusData,
   } = useAdminDashboardStats(activeWindowMinutes, jobWindowDays);
 
-
-  
-
-  
-  const userTotal = userDistributionData.reduce((sum, d) => sum + (d.value || 0), 0);
-  const jobTotal = jobStatusData.reduce((sum, d) => sum + (d.value || 0), 0);
   const router = useRouter();
 
   return (
-
     // Admin dashboard is currently static UI scaffolding.
-  // Next step: pull stats from Firestore (users/jobs/applications) + compute aggregates.
+    // Next step: pull stats from Firestore (users/jobs/applications) + compute aggregates.
 
     <div className="p-4 md:p-6 space-y-6 md:space-y-8">
       {/* Header */}
@@ -85,7 +72,7 @@ export default function AdminDashboardPage() {
             Jobs Posted ({jobWindowDays}d)
           </h2>
           <p className="text-2xl md:text-3xl font-bold mt-1 md:mt-2">
-              {loading ? "-" : jobsPostedCount}
+            {loading ? "-" : jobsPostedCount}
           </p>
           <p className="text-xs text-gray-500 mt-1">Last {jobWindowDays} days</p>
         </div>
@@ -116,29 +103,29 @@ export default function AdminDashboardPage() {
         <h2 className="text-lg md:text-xl font-semibold">Quick Actions</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
-          <button 
+          <button
             onClick={() => router.push("/admin/active-users")}
             className="p-3 md:p-4 text-sm md:text-base bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700"
           >
             Manage Users
           </button>
 
-          <button 
-            onClick={()=> router.push("/admin/jobs-posted")}
+          <button
+            onClick={() => router.push("/admin/jobs-posted")}
             className="p-3 md:p-4 text-sm md:text-base bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700"
           >
             Manage Jobs
           </button>
 
-          <button 
-            onClick={()=> router.push("/admin/revenue")}
+          <button
+            onClick={() => router.push("/admin/revenue")}
             className="p-3 md:p-4 text-sm md:text-base bg-emerald-600 text-white rounded-lg shadow hover:bg-emerald-700"
           >
             View Revenue Reports
           </button>
 
           <button
-            onClick={()=> router.push("/admin/training")}
+            onClick={() => router.push("/admin/training")}
             className="p-3 md:p-4 text-sm md:text-base bg-amber-600 text-white rounded-lg shadow hover:bg-amber-700"
           >
             Training Analytics
@@ -183,131 +170,15 @@ export default function AdminDashboardPage() {
           >
             <option value={15}>Last 15 minutes</option>
             <option value={60}>Last 1 hour</option>
-            <option value={60*24}>Last 24 hours</option>
-            <option value={60*24*7}>Last 7 days</option>
-            
+            <option value={60 * 24}>Last 24 hours</option>
+            <option value={60 * 24 * 7}>Last 7 days</option>
           </select>
 
-
-          <div className="p-3 md:p-4 bg-white rounded-lg shadow border space-y-3">
-            <div>
-              <h3 className="font-medium text-sm md:text-base">
-                User Distribution
-              </h3>
-              <p className="text-gray-600 mt-1 text-xs md:text-sm">
-                Breakdown of active drivers and businesses on the platform.
-              </p>
-            </div>
-
-            <div className="w-full h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={userDistributionData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={70}
-                    labelLine={false}
-                    label={({ name, percent }) =>
-                      `${name} ${(((percent ?? 0) * 100).toFixed(0))}%`
-                    }
-                  >
-                    {userDistributionData.map((_, index) => (
-                      <Cell
-                        key={`cell-user-${index}`}
-                        fill={USER_COLORS[index % USER_COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-
-                  {/* Values are "percent-like" right now (placeholder), so show % */}
-                  <Tooltip
-                    contentStyle={{ fontSize: 12 }}
-                    formatter={(value: any, name: any) => {
-                      const v = Number(value) || 0;
-                      const pct = userTotal > 0 ? ((v / userTotal) * 100).toFixed(0) : "0";
-                      return [`${v} (${pct}%)`, name];
-                    }}
-                  />
-
-
-                  <Legend verticalAlign="bottom" height={24} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Job Status Breakdown */}
-
-          <div className="flex items-center gap-2 mt-2">
-            <label className="text-xs md:text-sm text-gray-700">
-              Job Window
-            </label>
-            <select 
-              className="border rounded-lg px-3 py-2 text-xs md:text-sm"
-              value={jobWindowDays}
-              onChange={(e) => setJobWindowDays(Number(e.target.value))}
-            >
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-              <option value={365}>Last 12 months</option>
-
-            </select>
-
-          </div>
-
-
-          <div className="p-3 md:p-4 bg-white rounded-lg shadow border space-y-3">
-            <div>
-              <h3 className="font-medium text-sm md:text-base">
-                Job Status Breakdown
-              </h3>
-              <p className="text-gray-600 mt-1 text-xs md:text-sm">
-                How jobs created in the last {jobWindowDays} days are distributed across key states.
-              </p>
-            </div>
-
-            <div className="w-full h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={jobStatusData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={70}
-                    labelLine={false}
-                    label={({ name, percent }) =>
-                      `${name} ${(((percent ?? 0) * 100).toFixed(0))}%`
-                    }
-                  >
-                    {jobStatusData.map((_, index) => (
-                      <Cell
-                        key={`cell-job-${index}`}
-                        fill={JOB_COLORS[index % JOB_COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-
-                  <Tooltip
-                    contentStyle={{ fontSize: 12 }}
-                    formatter={(value: any, name: any) => {
-                      const v = Number(value) || 0;
-                      const pct = jobTotal > 0 ? ((v / jobTotal) * 100).toFixed(0) : "0";
-                      return [`${v} (${pct}%)`, name];
-                    }}
-                  />
-
-
-                  <Legend verticalAlign="bottom" height={24} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          {/* Charts - dynamically imported with SSR disabled */}
+          <ChartsClient
+            userDistributionData={userDistributionData}
+            jobStatusData={jobStatusData}
+          />
 
           {/* Training completion (simple bars for now) */}
           <div className="p-3 md:p-4 bg-white rounded-lg shadow border space-y-3">

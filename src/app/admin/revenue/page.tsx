@@ -1,19 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, useEffect } from "react";
 import { getAuth } from "firebase/auth";
 import { app } from "@/lib/firebase";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 
-type ChartDataPoint = { date: string; revenue: number };
+const RevenueChartClient = dynamic(() => import("./RevenueChartClient"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-64 bg-gray-100 rounded animate-pulse" />
+  ),
+});
+
 type RecentPayment = {
   id: string;
   amount: number;
@@ -29,7 +27,7 @@ type RevenueData = {
   revenueToday: number;
   revenueThisMonth: number;
   averageOrderValue: number;
-  chartData: ChartDataPoint[];
+  chartData: { date: string; revenue: number }[];
   recentPayments: RecentPayment[];
 };
 
@@ -88,7 +86,9 @@ export default function AdminRevenuePage() {
         const decoded = JSON.parse(atob(token.split(".")[1]));
         console.log("TOKEN CLAIMS:", decoded);
         if (!decoded.admin) {
-          console.warn("⚠️ admin claim missing! Did you set it and refresh the token?");
+          console.warn(
+            "⚠️ admin claim missing! Did you set it and refresh the token?"
+          );
         }
 
         const res = await fetch("/api/admin/revenue", {
@@ -98,7 +98,9 @@ export default function AdminRevenuePage() {
         const json = await res.json();
         setData(json);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load revenue data");
+        setError(
+          err instanceof Error ? err.message : "Failed to load revenue data"
+        );
       } finally {
         setLoading(false);
       }
@@ -162,11 +164,15 @@ export default function AdminRevenuePage() {
         <section className="grid grid-cols-2 gap-3 md:gap-4">
           <div className="p-4 bg-white rounded-lg shadow">
             <p className="text-sm text-gray-500">Average Order Value</p>
-            <p className="text-xl font-bold mt-1">{formatCurrency(data.averageOrderValue)}</p>
+            <p className="text-xl font-bold mt-1">
+              {formatCurrency(data.averageOrderValue)}
+            </p>
           </div>
           <div className="p-4 bg-white rounded-lg shadow">
             <p className="text-sm text-gray-500">Total Payments</p>
-            <p className="text-xl font-bold mt-1">{data.totalPayments.toLocaleString()}</p>
+            <p className="text-xl font-bold mt-1">
+              {data.totalPayments.toLocaleString()}
+            </p>
           </div>
         </section>
       )}
@@ -181,30 +187,7 @@ export default function AdminRevenuePage() {
             No revenue data in the last 7 days
           </div>
         ) : (
-          <div style={{ width: "100%", height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data?.chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 12 }}
-                  tickFormatter={(v) => {
-                    const [, m, d] = v.split("-");
-                    return `${d}/${m}`;
-                  }}
-                />
-                <YAxis
-                  tick={{ fontSize: 12 }}
-                  tickFormatter={(v) => `R${v}`}
-                />
-                <Tooltip
-                  formatter={(value: number) => [formatCurrency(value), "Revenue"]}
-                  labelFormatter={(label) => `Date: ${label}`}
-                />
-                <Bar dataKey="revenue" fill="#2563eb" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <RevenueChartClient chartData={data?.chartData ?? []} />
         )}
       </section>
 
@@ -224,21 +207,33 @@ export default function AdminRevenuePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 pr-4 font-medium text-gray-600">Amount</th>
-                  <th className="text-left py-2 pr-4 font-medium text-gray-600">Credits</th>
-                  <th className="text-left py-2 pr-4 font-medium text-gray-600">User ID</th>
+                  <th className="text-left py-2 pr-4 font-medium text-gray-600">
+                    Amount
+                  </th>
+                  <th className="text-left py-2 pr-4 font-medium text-gray-600">
+                    Credits
+                  </th>
+                  <th className="text-left py-2 pr-4 font-medium text-gray-600">
+                    User ID
+                  </th>
                   <th className="text-left py-2 font-medium text-gray-600">Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {data?.recentPayments.map((p) => (
                   <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="py-2 pr-4 font-medium">{formatCurrency(p.amount)}</td>
+                    <td className="py-2 pr-4 font-medium">
+                      {formatCurrency(p.amount)}
+                    </td>
                     <td className="py-2 pr-4">{p.credits}</td>
                     <td className="py-2 pr-4 text-xs text-gray-500 font-mono">
-                      {p.userId.length > 20 ? p.userId.slice(0, 20) + "…" : p.userId}
+                      {p.userId.length > 20
+                        ? p.userId.slice(0, 20) + "…"
+                        : p.userId}
                     </td>
-                    <td className="py-2 text-sm text-gray-500">{formatDate(p.createdAt)}</td>
+                    <td className="py-2 text-sm text-gray-500">
+                      {formatDate(p.createdAt)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -263,10 +258,16 @@ function KpiCard({
 }) {
   return (
     <div
-      className={`p-4 rounded-lg shadow ${accent ? "bg-blue-50" : "bg-white"}`}
+      className={`p-4 rounded-lg shadow ${
+        accent ? "bg-blue-50" : "bg-white"
+      }`}
     >
       <p className="text-sm text-gray-500">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${accent ? "text-blue-700" : ""}`}>
+      <p
+        className={`text-2xl font-bold mt-1 ${
+          accent ? "text-blue-700" : ""
+        }`}
+      >
         {value}
       </p>
       <p className="text-xs text-gray-400 mt-1">{sub}</p>
