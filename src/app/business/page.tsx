@@ -10,6 +10,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import CreditBadge from "@/components/CreditBadge";
+import { ProtectedRoute } from "@/app/components/ProtectedRoute";
 
 const BRAND = {
   orange: "#F36C21",
@@ -18,6 +19,14 @@ const BRAND = {
 };
 
 export default function BusinessDashboardPage() {
+  return (
+    <ProtectedRoute allowedRoles={["business"]}>
+      <BusinessDashboardContent />
+    </ProtectedRoute>
+  );
+}
+
+function BusinessDashboardContent() {
   const router = useRouter();
 
   // NOTE:

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ProtectedRoute } from "@/app/components/ProtectedRoute";
 
 import { useAdminDashboardStats } from "./_hooks/useAdminDashboardStats";
 
@@ -24,6 +25,14 @@ const ChartsClient = dynamic(() => import("./ChartsClient"), {
 });
 
 export default function AdminDashboardPage() {
+  return (
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <AdminDashboardContent />
+    </ProtectedRoute>
+  );
+}
+
+function AdminDashboardContent() {
   const [activeWindowMinutes, setActiveWindowMinutes] = useState(60);
   const [jobWindowDays, setJobWindowDays] = useState(30);
 
