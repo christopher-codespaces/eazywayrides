@@ -144,9 +144,14 @@ export default function DriverChatThreadPage() {
   const sendMessage = async () => {
     setError(null);
 
-    const user = auth.currentUser;
+    const user = auth?.currentUser;
     if (!user) {
       setError("You must be logged in.");
+      return;
+    }
+
+    if (!db) {
+      setError("Database not available.");
       return;
     }
 

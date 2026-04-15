@@ -47,6 +47,7 @@ export default function BusinessChatThreadPage() {
 
   useEffect(() => {
     if (!threadId) return;
+    if (!auth || !db) return;
 
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (!user) {
