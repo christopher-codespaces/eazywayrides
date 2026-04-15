@@ -10,6 +10,7 @@ import {
   GoogleAuthProvider,
   signInWithRedirect,
   getRedirectResult,
+  onAuthStateChanged,
   type Auth,
 } from "firebase/auth";
 import { initFirebaseClient, getFirebaseAuth } from "@/lib/firebaseClient";
@@ -40,50 +41,38 @@ export default function LoginPage() {
   // Role lives in context so Navbar/Sidebar can react immediately after login
   const { setRole } = useAuth();
 
-  // CRITICAL: Handle redirect result when user returns from Google sign-in
+  // CRITICAL: Handle redirect result and existing auth state
   useEffect(() => {
     const handleRedirectResult = async () => {
       const firebaseApp = initFirebaseClient();
-      if (!firebaseApp) return;
+      if (!firebaseApp) {
+        setProcessingRedirect(false);
+        return;
+      }
 
       const authInstance = getFirebaseAuth();
-      if (!authInstance) return;
+      if (!authInstance) {
+        setProcessingRedirect(false);
+        return;
+      }
 
       setAuth(authInstance);
       setDb(getFirestore(firebaseApp));
       setFirebaseReady(true);
 
-      // Check if we just returned from a Google redirect
-      try {
-        console.log("[Login] Checking for redirect result...");
-        const result = await getRedirectResult(authInstance);
-
-        if (result) {
-          console.log("[Login] Redirect result received:", result.user.email);
-          const user = result.user;
+      // Listen for existing auth state first (handles already-logged-in users)
+      const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
+        if (user) {
+          // User is already authenticated - check their role and redirect
+          console.log("[Login] Existing user detected:", user.email);
           const uid = user.uid;
-
           const firestoreDb = getFirestore(firebaseApp);
           const ref = doc(firestoreDb, "users", uid);
           const snap = await getDoc(ref);
 
-          // First-time Google user → create minimal doc and force onboarding
           if (!snap.exists()) {
-            console.log("[Login] New user, creating Firestore doc");
-            await setDoc(
-              ref,
-              {
-                email: user.email ?? "",
-                role: null,
-                phone: "",
-                name: "",
-                businessName: null,
-                credits: 3,
-                createdAt: Date.now(),
-              },
-              { merge: true }
-            );
-
+            // New user that somehow has auth but no doc
+            console.log("[Login] Existing auth, no doc - going to onboarding");
             localStorage.removeItem("role");
             setRole(null);
             router.push(ONBOARDING_ROUTE);
@@ -93,25 +82,83 @@ export default function LoginPage() {
           const data = snap.data();
           const userRole = data?.role as Role | undefined;
 
-          // Existing user but role not assigned yet → onboarding
           if (!userRole) {
-            console.log("[Login] Existing user, no role - going to onboarding");
+            console.log("[Login] Existing auth, no role - going to onboarding");
             localStorage.removeItem("role");
             setRole(null);
             router.push(ONBOARDING_ROUTE);
             return;
           }
 
-          // Known role → update context/localStorage and route
           console.log("[Login] Existing user with role:", userRole);
           routeByRole(userRole);
-        } else {
-          console.log("[Login] No redirect result - normal page load");
+          return;
         }
-      } catch (err: any) {
-        console.error("[Login] Redirect result error:", err);
-        setError(translateError(err?.code, err?.message));
-      }
+
+        // No existing user - check if we just returned from a Google redirect
+        try {
+          console.log("[Login] Checking for redirect result...");
+          const result = await getRedirectResult(authInstance);
+
+          if (result) {
+            console.log("[Login] Redirect result received:", result.user.email);
+            const user = result.user;
+            const uid = user.uid;
+
+            const firestoreDb = getFirestore(firebaseApp);
+            const ref = doc(firestoreDb, "users", uid);
+            const snap = await getDoc(ref);
+
+            // First-time Google user → create minimal doc and force onboarding
+            if (!snap.exists()) {
+              console.log("[Login] New user, creating Firestore doc");
+              await setDoc(
+                ref,
+                {
+                  email: user.email ?? "",
+                  role: null,
+                  phone: "",
+                  name: "",
+                  businessName: null,
+                  credits: 3,
+                  createdAt: Date.now(),
+                },
+                { merge: true }
+              );
+
+              localStorage.removeItem("role");
+              setRole(null);
+              router.push(ONBOARDING_ROUTE);
+              return;
+            }
+
+            const data = snap.data();
+            const userRole = data?.role as Role | undefined;
+
+            // Existing user but role not assigned yet → onboarding
+            if (!userRole) {
+              console.log("[Login] Existing user, no role - going to onboarding");
+              localStorage.removeItem("role");
+              setRole(null);
+              router.push(ONBOARDING_ROUTE);
+              return;
+            }
+
+            // Known role → update context/localStorage and route
+            console.log("[Login] Existing user with role:", userRole);
+            routeByRole(userRole);
+          } else {
+            console.log("[Login] No redirect result - showing login page");
+            setProcessingRedirect(false);
+          }
+        } catch (err: any) {
+          console.error("[Login] Redirect result error:", err);
+          setError(translateError(err?.code, err?.message));
+          setProcessingRedirect(false);
+        }
+      });
+
+      return () => unsubscribe();
     };
 
     handleRedirectResult();
