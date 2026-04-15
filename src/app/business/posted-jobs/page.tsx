@@ -98,6 +98,11 @@ function PostedJobsPageContent() {
   const toggleJobStatus = async (job: Job) => {
     setError(null);
 
+    if (!db) {
+      setError("Database not initialized.");
+      return;
+    }
+
     if (job.isExpired) {
       setError("This job is expired and cannot be reopened.");
       return;
