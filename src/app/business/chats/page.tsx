@@ -77,6 +77,7 @@ function BusinessChatsPageContent() {
   const [filter, setFilter] = useState<"all" | "withMessages">("all");
 
   useEffect(() => {
+    if (!auth || !db) return;
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         router.push("/login");

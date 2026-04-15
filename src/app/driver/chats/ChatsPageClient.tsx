@@ -40,6 +40,7 @@ export default function DriverChatsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!auth || !db) return;
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         router.push("/login");

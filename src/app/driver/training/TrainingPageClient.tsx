@@ -1253,8 +1253,8 @@ function percent(n: number, d: number) {
 type ProgressMap = Record<string, { status: ModuleStatus; quizScore?: number }>;
 
 export default function TrainingPage() {
-  const db = useMemo(() => getFirestore(app), []);
-  const auth = useMemo(() => getAuth(app), []);
+  const db = useMemo(() => (app ? getFirestore(app) : null), []);
+  const auth = useMemo(() => (app ? getAuth(app) : null), []);
 
   const [user, setUser] = useState<User | null>(null);
 
@@ -1269,6 +1269,7 @@ export default function TrainingPage() {
 
   // ✅ Auth listener
   useEffect(() => {
+    if (!auth) return;
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsub();
   }, [auth]);
@@ -1276,6 +1277,7 @@ export default function TrainingPage() {
   // ✅ Firestore load (when user becomes available)
   useEffect(() => {
     if (!user?.uid) return;
+    if (!db) return;
 
     const load = async () => {
       // fallback: localStorage first (fast UI)

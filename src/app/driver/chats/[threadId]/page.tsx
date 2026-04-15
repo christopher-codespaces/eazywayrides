@@ -59,6 +59,7 @@ export default function DriverChatThreadPage() {
 
   useEffect(() => {
     if (!threadId) return;
+    if (!auth || !db) return;
 
     let unsubMsgs: (() => void) | null = null;
 

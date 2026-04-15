@@ -113,6 +113,7 @@ export default function ApplicantsForJobPage() {
 
   useEffect(() => {
     if (!jobId) return;
+    if (!auth || !db) return;
 
     setLoading(true);
     setError(null);

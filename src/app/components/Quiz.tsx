@@ -94,6 +94,10 @@ export default function QuizCard({
   };
 
 const submit = async () => {
+  if (!auth || !db) {
+    alert("Firebase not initialized. Please refresh the page.");
+    return;
+  }
   const user = auth.currentUser;
   if (!user) {
     alert("You must be logged in to submit the quiz.");
