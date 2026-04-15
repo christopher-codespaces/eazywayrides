@@ -74,7 +74,7 @@ export default function LoginPage() {
   const emailValid = (em: string) => /\S+@\S+\.\S+/.test(em);
 
   // Map Firebase auth errors to human-friendly messages
-  const translateError = (code: string) => {
+  const translateError = (code: string, message?: string) => {
     switch (code) {
       case "auth/invalid-email":
         return "Please enter a valid email address.";
@@ -90,7 +90,15 @@ export default function LoginPage() {
         return "Too many attempts. Try again later.";
       case "auth/popup-closed-by-user":
         return ""; // user closed the Google popup — not really an error
+      case "auth/popup-blocked":
+        return "Popup was blocked. Please allow popups for this site.";
+      case "auth/cancelled-popup-request":
+        return ""; // user cancelled — not really an error
       default:
+        // Handle COOP errors that don't have a specific code
+        if (message?.includes("Cross-Origin-Opener-Policy")) {
+          return "Browser security policy blocked the popup. Please try again or use email/password login.";
+        }
         return "Something went wrong. Please try again.";
     }
   };
@@ -261,7 +269,7 @@ export default function LoginPage() {
         router.push(ONBOARDING_ROUTE);
       }
     } catch (err: any) {
-      const msg = translateError(err?.code || err?.message);
+      const msg = translateError(err?.code, err?.message);
       if (msg) setError(msg);
     } finally {
       setLoading(false);
@@ -272,6 +280,11 @@ export default function LoginPage() {
    * Google popup login
    * Guard behaviour:
    * - requires both Auth + Firestore
+   *
+   * NOTE: If you encounter "Cross-Origin-Opener-Policy" errors in production,
+   * ensure your hosting environment (Vercel, Netlify, etc.) doesn't override
+   * the COOP headers set in next.config.ts. Firebase Auth requires
+   * 'same-origin-allow-popups' for the popup flow to communicate back.
    */
   const handleGoogleLogin = async () => {
     setError(null);
@@ -286,7 +299,8 @@ export default function LoginPage() {
 
     try {
       const provider = new GoogleAuthProvider();
-      // provider.setCustomParameters({ prompt: "select_account" });
+      // Force account selection to prevent auto-login issues
+      provider.setCustomParameters({ prompt: "select_account" });
 
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -333,7 +347,7 @@ export default function LoginPage() {
       // Known role → update context/localStorage and route
       routeByRole(userRole);
     } catch (err: any) {
-      const msg = translateError(err?.code || err?.message);
+      const msg = translateError(err?.code, err?.message);
       if (msg) setError(msg);
     } finally {
       setGoogleLoading(false);
