@@ -231,7 +231,7 @@ function computeDriverRow(uid: string, u: UserDoc, moduleIds: string[]): DriverR
 }
 
 export default function TrainingPageClient() {
-  const db = useMemo(() => getFirestore(app), []);
+  const db = useMemo(() => (app ? getFirestore(app) : null), []);
 
   const moduleIds = useMemo(() => FALLBACK_MODULES, []);
 
@@ -256,6 +256,11 @@ export default function TrainingPageClient() {
       setError(null);
 
       try {
+        if (!db) {
+          setError("Firebase not initialized.");
+          setLoading(false);
+          return;
+        }
         const usersRef = collection(db, "users");
         // drivers only
         const q = query(usersRef, where("role", "==", "driver"));
