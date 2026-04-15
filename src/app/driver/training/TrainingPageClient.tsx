@@ -1362,7 +1362,7 @@ export default function TrainingPage() {
   const writeStatus = async (moduleId: string, status: ModuleStatus) => {
     setProgress((p) => ({ ...p, [moduleId]: { ...p[moduleId], status } }));
 
-    if (!user?.uid) return;
+    if (!user?.uid || !db) return;
     try {
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {

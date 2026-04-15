@@ -144,6 +144,10 @@ export default function DriverChatThreadPage() {
   const sendMessage = async () => {
     setError(null);
 
+    if (!auth) {
+      setError("Auth not initialized.");
+      return;
+    }
     const user = auth.currentUser;
     if (!user) {
       setError("You must be logged in.");
@@ -152,6 +156,11 @@ export default function DriverChatThreadPage() {
 
     const trimmed = text.trim();
     if (!trimmed) return;
+
+    if (!db) {
+      setError("Database not initialized.");
+      return;
+    }
 
     setSending(true);
     try {
