@@ -1,17 +1,35 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/complete-signup", "/favicon.ico"];
+const PUBLIC = [
+  "/login",
+  "/complete-signup",
+  "/favicon.ico",
+  "/api/auth",
+  "/_next",
+  "/static",
+];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // allow public pages
+  // Allow public pages and API auth routes
   if (PUBLIC.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
-  // check session cookie
-  const session = req.cookies.get("__session")?.value;
-  if (!session) return NextResponse.redirect(new URL("/login", req.url));
+  // Check Firebase session cookie (primary auth method)
+  const firebaseSession = req.cookies.get("__session")?.value;
+
+  // Also check NextAuth session cookie as fallback (handles both auth strategies)
+  const nextAuthSession =
+    req.cookies.get("next-auth.session-token")?.value ||
+    req.cookies.get("__Secure-next-auth.session-token")?.value;
+
+  if (!firebaseSession && !nextAuthSession) {
+    // Preserve the original destination so user lands there after login
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
 
   return NextResponse.next();
 }
