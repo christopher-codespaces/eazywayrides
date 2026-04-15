@@ -122,6 +122,10 @@ function PostedJobsPageContent() {
     );
 
     try {
+      if (!db) {
+        setError("Database not initialized");
+        return;
+      }
       await updateDoc(doc(db, "jobs", job.id), { status: newStatus });
     } catch (err: any) {
       console.error(err);
