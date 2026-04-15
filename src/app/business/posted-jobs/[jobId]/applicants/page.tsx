@@ -183,6 +183,10 @@ export default function ApplicantsForJobPage() {
   }, [auth, db, jobId, router]);
 
   const startChatWithDriver = async (driverId: string, driverName?: string) => {
+    if (!auth || !db) {
+      router.push("/login");
+      return;
+    }
     const user = auth.currentUser;
     if (!user) {
       router.push("/login");
