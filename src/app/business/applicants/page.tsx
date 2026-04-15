@@ -54,8 +54,8 @@ function ApplicantsPageContent() {
   const params = useParams<{ jobId: string }>();
   const jobId = params?.jobId;
 
-  const auth = getAuth(app);
-  const db = getFirestore(app);
+  const auth = app ? getAuth(app) : null;
+  const db = app ? getFirestore(app) : null;
 
   const [jobTitle, setJobTitle] = useState<string>("Job");
   const [applicants, setApplicants] = useState<ApplicantRow[]>([]);

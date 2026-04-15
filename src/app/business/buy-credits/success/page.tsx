@@ -22,6 +22,7 @@ function PaymentSuccessContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!app) { router.push("/login"); return; }
     const auth = getAuth(app);
     const user = auth.currentUser;
     if (!user) { router.push("/login"); return; }

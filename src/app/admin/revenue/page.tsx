@@ -68,7 +68,12 @@ export default function AdminRevenuePage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const auth = getAuth(app);
+        if (!app) {
+          setError("Firebase not initialized. Please refresh the page.");
+          setLoading(false);
+          return;
+        }
+        const auth = getAuth(app!);
         const user = auth.currentUser;
         if (!user) {
           setError("Not authenticated. Please log in.");

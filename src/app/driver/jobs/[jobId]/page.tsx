@@ -39,8 +39,8 @@ export default function DriverJobDetailsPage(){
     const {jobId} = useParams<{ jobId: string}>();
     const router = useRouter();
 
-    const auth = useMemo(() => getAuth(app),[]);
-    const db = useMemo(() => getFirestore(app), []);
+    const auth = useMemo(() => (app ? getAuth(app) : null),[]);
+    const db = useMemo(() => (app ? getFirestore(app) : null), []);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);

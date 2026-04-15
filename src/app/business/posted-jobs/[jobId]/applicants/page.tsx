@@ -99,8 +99,8 @@ export default function ApplicantsForJobPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const router = useRouter();
 
-  const auth = useMemo(() => getAuth(app), []);
-  const db = useMemo(() => getFirestore(app), []);
+  const auth = useMemo(() => (app ? getAuth(app) : null), []);
+  const db = useMemo(() => (app ? getFirestore(app) : null), []);
 
   const [pageTitle, setPageTitle] = useState<string>("Job Applicants");
   const [jobTitle, setJobTitle] = useState<string>("");

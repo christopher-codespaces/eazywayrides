@@ -86,8 +86,8 @@ const StatusBadge = ({ status }: { status?: Job["computedStatus"] }) => {
 };
 
 function PostedJobsPageContent() {
-  const auth = useMemo(() => getAuth(app), []);
-  const db = useMemo(() => getFirestore(app), []);
+  const auth = useMemo(() => (app ? getAuth(app) : null), []);
+  const db = useMemo(() => (app ? getFirestore(app) : null), []);
   const router = useRouter();
 
   const [jobs, setJobs] = useState<Job[]>([]);

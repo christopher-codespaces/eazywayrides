@@ -1,33 +1,17 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
-  reactCompiler: true,
-
-  /**
-   * Cross-Origin headers for Firebase Authentication
-   * =============================================================================
-   * Firebase Auth (especially Google sign-in via popup) requires specific headers
-   * to allow cross-origin communication between the popup and parent window.
-   *
-   * Cross-Origin-Opener-Policy: same-origin-allow-popups
-   * - Allows popups to communicate with the parent window
-   * - Required for signInWithPopup to work correctly
-   *
-   * Cross-Origin-Embedder-Policy: credentialless (or require-corp)
-   * - Controls how cross-origin resources are embedded
-   */
+const nextConfig = {
   async headers() {
     return [
       {
-        source: "/:path*",
+        source: "/(.*)",
         headers: [
           {
             key: "Cross-Origin-Opener-Policy",
+            // MUST be this value for popups to function
             value: "same-origin-allow-popups",
           },
           {
             key: "Cross-Origin-Embedder-Policy",
+            // If popups still fail, set this to 'unsafe-none' temporarily
             value: "credentialless",
           },
         ],
@@ -35,5 +19,3 @@ const nextConfig: NextConfig = {
     ];
   },
 };
-
-export default nextConfig;

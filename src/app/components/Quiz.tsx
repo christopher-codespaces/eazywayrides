@@ -61,8 +61,8 @@ export default function QuizCard({
   onPassed,
   onFailed,
 }: QuizProps) {
-  const db = useMemo(() => getFirestore(app), []);
-  const auth = useMemo(() => getAuth(app), []);
+  const db = useMemo(() => (app ? getFirestore(app) : null), []);
+  const auth = useMemo(() => (app ? getAuth(app) : null), []);
 
   const [answers, setAnswers] = useState<Record<string, QuizOption["key"]>>({});
   const [submitting, setSubmitting] = useState(false);

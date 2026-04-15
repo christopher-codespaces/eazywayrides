@@ -32,8 +32,8 @@ const formatDateTime = (d?: Date | null) => {
 
 export default function DriverChatsPage() {
   const router = useRouter();
-  const auth = getAuth(app);
-  const db = getFirestore(app);
+  const auth = app ? getAuth(app) : null;
+  const db = app ? getFirestore(app) : null;
 
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [loading, setLoading] = useState(true);

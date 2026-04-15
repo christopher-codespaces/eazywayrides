@@ -35,8 +35,8 @@ export default function DriverChatThreadPage() {
   const { threadId } = useParams<{ threadId: string }>();
   const router = useRouter();
 
-  const db = useMemo(() => getFirestore(app), []);
-  const auth = useMemo(() => getAuth(app), []);
+  const db = useMemo(() => (app ? getFirestore(app) : null), []);
+  const auth = useMemo(() => (app ? getAuth(app) : null), []);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
