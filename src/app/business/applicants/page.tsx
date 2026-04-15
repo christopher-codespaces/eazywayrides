@@ -140,6 +140,10 @@ function ApplicantsPageContent() {
   }, [applicants, searchText]);
 
   const openOrCreateThread = async (a: ApplicantRow) => {
+    if (!auth || !db) {
+      router.push("/login");
+      return;
+    }
     const user = auth.currentUser;
     if (!user) {
       router.push("/login");
