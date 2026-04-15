@@ -8,10 +8,11 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   type Auth,
 } from "firebase/auth";
-import { initFirebaseClient } from "@/lib/firebaseClient";
+import { initFirebaseClient, getFirebaseAuth } from "@/lib/firebaseClient";
 import {
   getFirestore,
   doc,
@@ -39,15 +40,82 @@ export default function LoginPage() {
   // Role lives in context so Navbar/Sidebar can react immediately after login
   const { setRole } = useAuth();
 
-  // Initialize Firebase client
+  // CRITICAL: Handle redirect result when user returns from Google sign-in
   useEffect(() => {
-    const firebaseApp = initFirebaseClient();
-    if (firebaseApp) {
-      setAuth(getAuth(firebaseApp));
+    const handleRedirectResult = async () => {
+      const firebaseApp = initFirebaseClient();
+      if (!firebaseApp) return;
+
+      const authInstance = getFirebaseAuth();
+      if (!authInstance) return;
+
+      setAuth(authInstance);
       setDb(getFirestore(firebaseApp));
       setFirebaseReady(true);
-    }
-  }, []);
+
+      // Check if we just returned from a Google redirect
+      try {
+        console.log("[Login] Checking for redirect result...");
+        const result = await getRedirectResult(authInstance);
+
+        if (result) {
+          console.log("[Login] Redirect result received:", result.user.email);
+          const user = result.user;
+          const uid = user.uid;
+
+          const firestoreDb = getFirestore(firebaseApp);
+          const ref = doc(firestoreDb, "users", uid);
+          const snap = await getDoc(ref);
+
+          // First-time Google user → create minimal doc and force onboarding
+          if (!snap.exists()) {
+            console.log("[Login] New user, creating Firestore doc");
+            await setDoc(
+              ref,
+              {
+                email: user.email ?? "",
+                role: null,
+                phone: "",
+                name: "",
+                businessName: null,
+                credits: 3,
+                createdAt: Date.now(),
+              },
+              { merge: true }
+            );
+
+            localStorage.removeItem("role");
+            setRole(null);
+            router.push(ONBOARDING_ROUTE);
+            return;
+          }
+
+          const data = snap.data();
+          const userRole = data?.role as Role | undefined;
+
+          // Existing user but role not assigned yet → onboarding
+          if (!userRole) {
+            console.log("[Login] Existing user, no role - going to onboarding");
+            localStorage.removeItem("role");
+            setRole(null);
+            router.push(ONBOARDING_ROUTE);
+            return;
+          }
+
+          // Known role → update context/localStorage and route
+          console.log("[Login] Existing user with role:", userRole);
+          routeByRole(userRole);
+        } else {
+          console.log("[Login] No redirect result - normal page load");
+        }
+      } catch (err: any) {
+        console.error("[Login] Redirect result error:", err);
+        setError(translateError(err?.code, err?.message));
+      }
+    };
+
+    handleRedirectResult();
+  }, [router, setRole]);
 
   // login/signup toggle
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -59,7 +127,8 @@ export default function LoginPage() {
   // UX state
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false); // email/password flow
-  const [googleLoading, setGoogleLoading] = useState(false); // google popup flow
+  const [googleLoading, setGoogleLoading] = useState(false); // google redirect flow
+  const [processingRedirect, setProcessingRedirect] = useState(true); // CRITICAL: Show loading while checking redirect
 
   // Basic client-side password rules (signup only)
   const passwordValid = (pwd: string) => {
@@ -89,13 +158,12 @@ export default function LoginPage() {
       case "auth/too-many-requests":
         return "Too many attempts. Try again later.";
       case "auth/popup-closed-by-user":
-        return ""; // user closed the Google popup — not really an error
+        return "";
       case "auth/popup-blocked":
         return "Popup was blocked. Please allow popups for this site.";
       case "auth/cancelled-popup-request":
-        return ""; // user cancelled — not really an error
+        return "";
       default:
-        // Handle COOP errors that don't have a specific code
         if (message?.includes("Cross-Origin-Opener-Policy")) {
           return "Browser security policy blocked the popup. Please try again or use email/password login.";
         }
@@ -105,8 +173,6 @@ export default function LoginPage() {
 
   /**
    * Password reset uses the current email field.
-   * Guard behaviour:
-   * - If Firebase Auth isn't available (missing env), exit gracefully.
    */
   const handleForgotPassword = async () => {
     setError(null);
@@ -116,7 +182,6 @@ export default function LoginPage() {
       return;
     }
 
-    // Guard: Firebase client not configured
     if (!auth) {
       setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars.");
       return;
@@ -132,7 +197,6 @@ export default function LoginPage() {
 
   // One place to update role everywhere + route accordingly
   const routeByRole = (userRole: Role | undefined) => {
-    // Persist role in context + localStorage so UI stays consistent on refresh
     if (userRole) {
       setRole(userRole);
       if (typeof window !== "undefined") {
@@ -148,13 +212,7 @@ export default function LoginPage() {
   };
 
   /**
-   * Onboarding path:
-   * - ensures a user doc exists
-   * - clears role in UI
-   * - routes to /complete-signup
-   *
-   * Guard behaviour:
-   * - requires Firestore
+   * Onboarding path
    */
   const sendToOnboarding = async (uid: string, emailValue: string | null) => {
     if (!db) {
@@ -165,41 +223,34 @@ export default function LoginPage() {
     const ref = doc(db, "users", uid);
     const snap = await getDoc(ref);
 
-    // If auth exists but Firestore doc doesn't, create a minimal placeholder
     if (!snap.exists()) {
       await setDoc(ref, {
         email: emailValue ?? "",
-        role: null, // role assigned during onboarding
-        phone: "", // <-- added
+        role: null,
+        phone: "",
         name: "",
         businessName: null,
-        credits: 3, // free starter credits for all new users
+        credits: 3,
         createdAt: Date.now(),
       });
     }
 
-    // Make sure UI is "public" until onboarding assigns a role
-    if (typeof window !== "undefined") localStorage.removeItem("role");
+    localStorage.removeItem("role");
     setRole(null);
-
     router.push(ONBOARDING_ROUTE);
   };
 
   /**
    * Email/password login or signup
-   * Guard behaviour:
-   * - requires both Auth + Firestore
    */
   const handleSubmit = async () => {
     setError(null);
 
-    // Guard: Firebase client not configured
     if (!auth || !db) {
       setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars.");
       return;
     }
 
-    // quick client-side validation
     if (!emailValid(email)) {
       setError("Please enter a valid email.");
       return;
@@ -214,14 +265,12 @@ export default function LoginPage() {
 
     try {
       if (mode === "login") {
-        // LOGIN: auth first, then decide route based on Firestore role
         const userCred = await signInWithEmailAndPassword(auth, email, password);
 
         const uid = userCred.user.uid;
         const ref = doc(db, "users", uid);
         const snap = await getDoc(ref);
 
-        // Auth user exists but no profile doc → onboarding
         if (!snap.exists()) {
           await sendToOnboarding(uid, userCred.user.email ?? email);
           return;
@@ -230,21 +279,17 @@ export default function LoginPage() {
         const data = snap.data();
         const userRole = data?.role as Role | undefined;
 
-        // Doc exists but role not set yet → onboarding
         if (!userRole) {
           await sendToOnboarding(uid, userCred.user.email ?? email);
           return;
         }
 
-        // Update login timestamp (non-blocking but useful)
         await updateDoc(doc(db, "users", uid), {
           lastLoginAt: serverTimestamp(),
         });
 
-        // Known role → set context/localStorage and route
         routeByRole(userRole);
       } else {
-        // SIGNUP: create auth user, create minimal Firestore doc, then onboarding
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCred.user.uid;
 
@@ -253,19 +298,17 @@ export default function LoginPage() {
           {
             email,
             role: null,
-            phone: "", // <-- added
+            phone: "",
             name: "",
             businessName: null,
-            credits: 3, // free starter credits for all new users
+            credits: 3,
             createdAt: Date.now(),
           },
           { merge: true }
         );
 
-        // No role yet until onboarding completes
-        if (typeof window !== "undefined") localStorage.removeItem("role");
+        localStorage.removeItem("role");
         setRole(null);
-
         router.push(ONBOARDING_ROUTE);
       }
     } catch (err: any) {
@@ -277,20 +320,13 @@ export default function LoginPage() {
   };
 
   /**
-   * Google popup login
-   * Guard behaviour:
-   * - requires both Auth + Firestore
-   *
-   * NOTE: If you encounter "Cross-Origin-Opener-Policy" errors in production,
-   * ensure your hosting environment (Vercel, Netlify, etc.) doesn't override
-   * the COOP headers set in next.config.ts. Firebase Auth requires
-   * 'same-origin-allow-popups' for the popup flow to communicate back.
+   * Google redirect login
+   * CRITICAL: Uses signInWithRedirect instead of signInWithPopup to avoid COOP issues
    */
   const handleGoogleLogin = async () => {
     setError(null);
 
-    // Guard: Firebase client not configured
-    if (!auth || !db) {
+    if (!auth) {
       setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars.");
       return;
     }
@@ -299,60 +335,32 @@ export default function LoginPage() {
 
     try {
       const provider = new GoogleAuthProvider();
-      // Force account selection to prevent auto-login issues
       provider.setCustomParameters({ prompt: "select_account" });
 
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      const uid = user.uid;
-      const ref = doc(db, "users", uid);
-      const snap = await getDoc(ref);
-
-      // First-time Google user → create minimal doc and force onboarding
-      if (!snap.exists()) {
-        await setDoc(
-          ref,
-          {
-            email: user.email ?? "",
-            role: null,
-            phone: "", // <-- added
-            name: "",
-            businessName: null,
-            credits: 3, // free starter credits for all new users
-            createdAt: Date.now(),
-          },
-          { merge: true }
-        );
-
-        if (typeof window !== "undefined") localStorage.removeItem("role");
-        setRole(null);
-
-        router.push(ONBOARDING_ROUTE);
-        return;
-      }
-
-      const data = snap.data();
-      const userRole = data?.role as Role | undefined;
-
-      // Existing user but role not assigned yet → onboarding
-      if (!userRole) {
-        if (typeof window !== "undefined") localStorage.removeItem("role");
-        setRole(null);
-
-        router.push(ONBOARDING_ROUTE);
-        return;
-      }
-
-      // Known role → update context/localStorage and route
-      routeByRole(userRole);
+      console.log("[Login] Initiating Google redirect...");
+      // CRITICAL: Use signInWithRedirect instead of signInWithPopup
+      await signInWithRedirect(auth, provider);
+      // Page will redirect to Google, then back to this page
     } catch (err: any) {
+      console.error("[Login] Google redirect error:", err);
       const msg = translateError(err?.code, err?.message);
       if (msg) setError(msg);
-    } finally {
       setGoogleLoading(false);
     }
   };
+
+  // CRITICAL: Show loading screen while checking redirect result
+  // This prevents showing "Welcome Back" while Firebase processes the redirect
+  if (processingRedirect) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center justify-center h-screen bg-gray-100">
@@ -415,7 +423,6 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          {/* Only show reset link on login */}
           {mode === "login" && (
             <button
               type="button"
@@ -474,7 +481,7 @@ export default function LoginPage() {
               />
             </svg>
             <span className="text-sm font-medium text-gray-700">
-              {googleLoading ? "Connecting..." : "Continue with Google"}
+              {googleLoading ? "Redirecting to Google..." : "Continue with Google"}
             </span>
           </button>
         </>

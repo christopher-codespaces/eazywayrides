@@ -8,11 +8,19 @@
  * Must be called from useEffect in each client component.
  */
 
-import { initializeApp, getApps } from "firebase/app";
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
 
+/**
+ * CRITICAL: Use the Firebase app domain, NOT your custom domain.
+ * signInWithRedirect requires this exact domain to work correctly
+ * and avoid COOP/COEP issues in production.
+ *
+ * Format: {project-id}.firebaseapp.com
+ */
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  authDomain: "project-b-us-based.firebaseapp.com", // STRICT: Use Firebase app domain
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
@@ -20,18 +28,18 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Global app — starts as null (SSR-safe)
-// Components import { app } from "@/lib/firebase" which re-exports this
-let _app: any = null;
+// Global instances
+let _app: FirebaseApp | null = null;
+let _auth: Auth | null = null;
 let _initialized = false;
 
-export let app: any = null;
+export let app: FirebaseApp | null = null;
 
 /**
  * MUST be called from useEffect in each client component.
  * Returns the Firebase app (or null during SSR / missing env vars).
  */
-export function initFirebaseClient(): any {
+export function initFirebaseClient(): FirebaseApp | null {
   if (typeof window === "undefined") return null;
 
   if (!_initialized) {
@@ -41,12 +49,28 @@ export function initFirebaseClient(): any {
     } else {
       _app = getApps()[0];
     }
+    // Initialize auth immediately
+    if (_app) {
+      _auth = getAuth(_app);
+    }
     app = _app;
   }
 
   return _app;
 }
 
-export function getFirebaseApp(): any {
+/**
+ * Get the Firebase Auth instance.
+ * Must call initFirebaseClient() first in a useEffect.
+ */
+export function getFirebaseAuth(): Auth | null {
+  if (typeof window === "undefined") return null;
+  if (!_auth && app) {
+    _auth = getAuth(app);
+  }
+  return _auth;
+}
+
+export function getFirebaseApp(): FirebaseApp | null {
   return _app;
 }
