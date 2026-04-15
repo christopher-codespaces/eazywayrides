@@ -75,6 +75,7 @@ export default function LoginPage() {
             console.log("[Login] Existing auth, no doc - going to onboarding");
             localStorage.removeItem("role");
             setRole(null);
+            setProcessingRedirect(false);
             router.push(ONBOARDING_ROUTE);
             return;
           }
@@ -86,11 +87,13 @@ export default function LoginPage() {
             console.log("[Login] Existing auth, no role - going to onboarding");
             localStorage.removeItem("role");
             setRole(null);
+            setProcessingRedirect(false);
             router.push(ONBOARDING_ROUTE);
             return;
           }
 
           console.log("[Login] Existing user with role:", userRole);
+          setProcessingRedirect(false);
           routeByRole(userRole);
           return;
         }
@@ -128,6 +131,7 @@ export default function LoginPage() {
 
               localStorage.removeItem("role");
               setRole(null);
+              setProcessingRedirect(false);
               router.push(ONBOARDING_ROUTE);
               return;
             }
@@ -140,12 +144,14 @@ export default function LoginPage() {
               console.log("[Login] Existing user, no role - going to onboarding");
               localStorage.removeItem("role");
               setRole(null);
+              setProcessingRedirect(false);
               router.push(ONBOARDING_ROUTE);
               return;
             }
 
             // Known role → update context/localStorage and route
             console.log("[Login] Existing user with role:", userRole);
+            setProcessingRedirect(false);
             routeByRole(userRole);
           } else {
             console.log("[Login] No redirect result - showing login page");
@@ -154,6 +160,7 @@ export default function LoginPage() {
         } catch (err: any) {
           console.error("[Login] Redirect result error:", err);
           setError(translateError(err?.code, err?.message));
+        } finally {
           setProcessingRedirect(false);
         }
       });
