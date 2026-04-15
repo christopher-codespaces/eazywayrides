@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   getAuth,
   signInWithEmailAndPassword,
@@ -9,8 +9,9 @@ import {
   sendPasswordResetEmail,
   GoogleAuthProvider,
   signInWithPopup,
+  type Auth,
 } from "firebase/auth";
-import { app } from "@/lib/firebase";
+import { initFirebaseClient } from "@/lib/firebaseClient";
 import {
   getFirestore,
   doc,
@@ -18,6 +19,7 @@ import {
   setDoc,
   updateDoc,
   serverTimestamp,
+  type Firestore,
 } from "firebase/firestore";
 import { useAuth } from "@/app/context/AuthContext";
 
@@ -27,24 +29,25 @@ const ONBOARDING_ROUTE = "/complete-signup";
 type Role = "driver" | "business" | "admin";
 
 export default function LoginPage() {
-  /**
-   * Firebase client dependencies (Auth + Firestore)
-   * ---------------------------------------------------------------------------
-   * In this codebase, `app` is typed as `FirebaseApp | null` to allow builds
-   * to succeed when NEXT_PUBLIC_FIREBASE_* env vars are missing (CI/review builds).
-   *
-   * So we must NEVER call getAuth(app) / getFirestore(app) directly.
-   * Instead:
-   * - initialise them only when `app` exists
-   * - otherwise keep them null and show a clear error in the UI
-   */
-  const auth = useMemo(() => (app ? getAuth(app) : null), [app]);
-  const db = useMemo(() => (app ? getFirestore(app) : null), [app]);
+  // Firebase dependencies - initialized locally to ensure they're ready
+  const [auth, setAuth] = useState<Auth | null>(null);
+  const [db, setDb] = useState<Firestore | null>(null);
+  const [firebaseReady, setFirebaseReady] = useState(false);
 
   const router = useRouter();
 
   // Role lives in context so Navbar/Sidebar can react immediately after login
   const { setRole } = useAuth();
+
+  // Initialize Firebase client
+  useEffect(() => {
+    const firebaseApp = initFirebaseClient();
+    if (firebaseApp) {
+      setAuth(getAuth(firebaseApp));
+      setDb(getFirestore(firebaseApp));
+      setFirebaseReady(true);
+    }
+  }, []);
 
   // login/signup toggle
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -424,9 +427,9 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading || googleLoading}
+            disabled={loading || googleLoading || !firebaseReady}
             className="w-full bg-blue-600 text-white py-3 rounded-lg mt-6 hover:bg-blue-700 transition disabled:bg-gray-400">
-            {loading ? "Loading..." : mode === "login" ? "Login" : "Sign Up"}
+            {!firebaseReady ? "Loading..." : loading ? "Loading..." : mode === "login" ? "Login" : "Sign Up"}
           </button>
         </form>
 
@@ -441,7 +444,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={handleGoogleLogin}
-            disabled={googleLoading || loading}
+            disabled={googleLoading || loading || !firebaseReady}
             className="w-full flex items-center justify-center gap-2 border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition disabled:bg-gray-200">
             <svg
               className="w-5 h-5"
