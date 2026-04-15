@@ -67,6 +67,7 @@ function ApplicantsPageContent() {
 
   useEffect(() => {
     if (!jobId) return;
+    if (!auth || !db) return;
 
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
