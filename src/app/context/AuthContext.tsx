@@ -48,12 +48,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   const logout = async () => {
+    // Clear the server-side __session cookie so middleware reflects sign-out
+    try {
+      await fetch("/api/session/logout", { method: "POST" });
+    } catch (err) {
+      console.error("[AuthContext] Failed to clear server session:", err);
+    }
+
+    // Sign out of Firebase client auth
+    try {
+      const app = initFirebaseClient();
+      if (app) {
+        const auth = getAuth(app);
+        await signOut(auth);
+      }
+    } catch (err) {
+      console.error("[AuthContext] Firebase signOut error:", err);
+    }
+
     setUser(null);
     setUserData(null);
     setRole(null);
     if (typeof window !== "undefined") localStorage.removeItem("role");
     router.push("/login");
-    return;
   };
 
   useEffect(() => {
