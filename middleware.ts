@@ -26,8 +26,9 @@ export function middleware(req: NextRequest) {
 
   if (!firebaseSession && !nextAuthSession) {
     // Preserve the original destination so user lands there after login
+    // FIX 2: use ?redirect= to match searchParams.get("redirect") in login/page.tsx
     const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
