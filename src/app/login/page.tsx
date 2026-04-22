@@ -32,7 +32,9 @@ type Role = "driver" | "business" | "admin";
 
 // ─── Session Cookie Helper ────────────────────────────────────────────────────
 async function createServerSession(user: User): Promise<void> {
-  const idToken = await user.getIdToken();
+  // forceRefresh=true ensures Admin SDK always gets a fresh token (<5 min old)
+  // Prevents intermittent 401s from cached tokens older than 5 minutes
+  const idToken = await user.getIdToken(/* forceRefresh= */ true);
   const res = await fetch("/api/session/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -122,6 +124,11 @@ function LoginPageInner() {
         console.error("[Login] Google redirect result error:", err);
         isSubmitting.current = false;
         setGoogleLoading(false);
+        // FIX 1: Surface the error to the user — loop is no longer silent
+        const msg = err?.message?.includes("server session")
+          ? "Login succeeded but session creation failed. Please try again."
+          : translateError(err?.code, err?.message);
+        setError(msg || "Google sign-in failed. Please try again or use email/password.");
       }
     })();
 
