@@ -9,7 +9,12 @@
  */
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import {
+  getAuth,
+  setPersistence,
+  browserLocalPersistence,
+  type Auth,
+} from "firebase/auth";
 
 /**
  * CRITICAL: Use the Firebase app domain, NOT your custom domain.
@@ -50,9 +55,15 @@ export function initFirebaseClient(): FirebaseApp | null {
     } else {
       _app = getApps()[0];
     }
-    // Initialize auth immediately
+    // Initialize auth immediately and pin persistence to localStorage.
+    // Without this, Firebase defaults to sessionStorage/memory in some
+    // environments, wiping the redirect handshake state before
+    // getRedirectResult() can read it — causing an infinite /login loop.
     if (_app) {
       _auth = getAuth(_app);
+      setPersistence(_auth, browserLocalPersistence).catch((e) =>
+        console.warn("[Firebase] Could not set persistence:", e)
+      );
     }
     app = _app;
   }
