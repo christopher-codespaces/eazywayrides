@@ -2,13 +2,14 @@
 
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   GoogleAuthProvider,
   signInWithRedirect,
+  getRedirectResult,
   type Auth,
   type User,
 } from "firebase/auth";
@@ -30,9 +31,6 @@ const ONBOARDING_ROUTE = "/complete-signup";
 type Role = "driver" | "business" | "admin";
 
 // ─── Session Cookie Helper ────────────────────────────────────────────────────
-// Calls the server-side API route that mints a Firebase Admin session cookie.
-// CRITICAL: middleware checks for the httpOnly __session cookie on every
-// protected route. document.cookie cannot set httpOnly — only this route can.
 async function createServerSession(user: User): Promise<void> {
   const idToken = await user.getIdToken();
   const res = await fetch("/api/session/login", {
@@ -47,9 +45,6 @@ async function createServerSession(user: User): Promise<void> {
 function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  // Auth context — AuthContext owns onAuthStateChanged + getRedirectResult.
-  // We just read the stable values it exposes.
   const { user, role, setRole, initialized } = useAuth();
 
   // Firebase instances — initialized once on mount
@@ -65,6 +60,11 @@ function LoginPageInner() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // ─── Guard: true while handleSubmit / Google redirect is in flight ───────────
+  // Prevents the page-load useEffect from firing a competing redirect
+  // while the explicit submit flow is already routing the user.
+  const isSubmitting = useRef(false);
+
   // ─── Initialize Firebase instances ───────────────────────────────────────
   useEffect(() => {
     const firebaseApp = initFirebaseClient();
@@ -74,18 +74,76 @@ function LoginPageInner() {
     setFirebaseReady(true);
   }, []);
 
-  // ─── Redirect once auth is known ─────────────────────────────────────────
-  // AuthContext sets initialized=true after onAuthStateChanged fires once.
-  // Only then do we act — prevents flash-of-login-form for already-authed users.
+  // ─── Google redirect result handler ────────────────────────────────────
+  // Runs once on mount after Google redirects back to the app.
+  // Mints the __session cookie then routes by role.
+  useEffect(() => {
+    if (!auth || !db) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (!result || cancelled) return;
+
+        isSubmitting.current = true;
+        setGoogleLoading(true);
+
+        await createServerSession(result.user);
+
+        const uid = result.user.uid;
+        const ref = doc(db, "users", uid);
+        const snap = await getDoc(ref);
+
+        if (!snap.exists()) {
+          await setDoc(ref, {
+            email: result.user.email ?? "",
+            role: null,
+            phone: "",
+            name: result.user.displayName ?? "",
+            businessName: null,
+            credits: 3,
+            createdAt: Date.now(),
+          });
+          router.push(ONBOARDING_ROUTE);
+          return;
+        }
+
+        const data = snap.data();
+        const userRole = data?.role as Role | undefined;
+
+        if (!userRole) {
+          router.push(ONBOARDING_ROUTE);
+          return;
+        }
+
+        routeByRole(userRole);
+      } catch (err: any) {
+        console.error("[Login] Google redirect result error:", err);
+        isSubmitting.current = false;
+        setGoogleLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, db]);
+
+  // ─── Page-load redirect (already-authed users only) ──────────────────────
+  // Fires ONLY when the user is already logged in on arrival (e.g. back-button
+  // or direct navigation to /login while a session is live).
+  // Gated by isSubmitting so it never races with handleSubmit / Google flow.
   useEffect(() => {
     if (!initialized) return;
+    if (isSubmitting.current) return; // explicit submit owns routing, stand down
 
     if (user && role) {
       routeByRole(role);
     } else if (user && !role) {
       router.push(ONBOARDING_ROUTE);
     }
-  }, [user, role, initialized, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, role, initialized]);
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const routeByRole = (userRole: Role) => {
@@ -144,26 +202,6 @@ function LoginPageInner() {
     }
   };
 
-  const sendToOnboarding = async (uid: string, emailValue: string | null) => {
-    if (!db) { setError("Firebase is not configured."); return; }
-    const ref = doc(db, "users", uid);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      await setDoc(ref, {
-        email: emailValue ?? "",
-        role: null,
-        phone: "",
-        name: "",
-        businessName: null,
-        credits: 3,
-        createdAt: Date.now(),
-      });
-    }
-    localStorage.removeItem("role");
-    setRole(null);
-    router.push(ONBOARDING_ROUTE);
-  };
-
   // ─── Email / password submit ──────────────────────────────────────────────
   const handleSubmit = async () => {
     setError(null);
@@ -174,6 +212,7 @@ function LoginPageInner() {
       return;
     }
 
+    isSubmitting.current = true; // lock out the page-load useEffect
     setLoading(true);
 
     try {
@@ -201,9 +240,10 @@ function LoginPageInner() {
         }
 
         await updateDoc(doc(db, "users", uid), { lastLoginAt: serverTimestamp() });
-        routeByRole(userRole);
+        routeByRole(userRole); // sole owner of redirect after email login
 
       } else {
+        // Sign up: create Firebase user + server session + Firestore doc
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
 
         // CRITICAL: mint httpOnly __session cookie for newly registered user
@@ -232,9 +272,10 @@ function LoginPageInner() {
           { merge: true }
         );
 
-        router.push(ONBOARDING_ROUTE);
+        router.push(ONBOARDING_ROUTE); // new users always go to onboarding
       }
     } catch (err: any) {
+      isSubmitting.current = false; // unlock on error so user can retry
       const msg = translateError(err?.code, err?.message);
       if (msg) setError(msg);
     } finally {
@@ -243,21 +284,20 @@ function LoginPageInner() {
   };
 
   // ─── Google redirect login ────────────────────────────────────────────────
-  // Uses signInWithRedirect (not popup) to avoid COOP issues.
-  // AuthContext handles getRedirectResult on the next page load.
-  // createServerSession is called from handleSubmit path after redirect resolves
-  // via the useEffect above watching [user, role, initialized].
   const handleGoogleLogin = async () => {
     setError(null);
     if (!auth) { setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars."); return; }
+    isSubmitting.current = true; // lock out page-load useEffect for redirect flow
     setGoogleLoading(true);
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      console.log("[Login] Initiating Google redirect...");
       await signInWithRedirect(auth, provider);
+      // Page navigates away — execution stops here.
+      // On return, the getRedirectResult useEffect above takes over.
     } catch (err: any) {
       console.error("[Login] Google redirect error:", err);
+      isSubmitting.current = false;
       const msg = translateError(err?.code, err?.message);
       if (msg) setError(msg);
       setGoogleLoading(false);
@@ -278,8 +318,8 @@ function LoginPageInner() {
     );
   }
 
-  // Guard 2: Already logged in with role — useEffect above is redirecting
-  if (user && role) {
+  // Guard 2: Already logged in with role — page-load useEffect is redirecting
+  if (user && role && !isSubmitting.current) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
         <div className="text-center">
@@ -389,9 +429,6 @@ function LoginPageInner() {
 }
 
 // ─── Page export — Suspense boundary required for useSearchParams SSR ─────────
-// Next.js 16 static generation throws if useSearchParams() is called outside
-// a Suspense boundary. LoginPageInner owns all logic; this wrapper satisfies
-// the prerender requirement without touching any auth or session code.
 export default function LoginPage() {
   return (
     <Suspense
