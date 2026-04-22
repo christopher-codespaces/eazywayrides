@@ -1,20 +1,18 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  getAuth,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   GoogleAuthProvider,
   signInWithRedirect,
-  getRedirectResult,
-  onAuthStateChanged,
   type Auth,
   type User,
 } from "firebase/auth";
-import { initFirebaseClient, getFirebaseAuth } from "@/lib/firebaseClient";
+import { getAuth } from "firebase/auth";
+import { initFirebaseClient } from "@/lib/firebaseClient";
 import {
   getFirestore,
   doc,
@@ -30,9 +28,10 @@ const ONBOARDING_ROUTE = "/complete-signup";
 
 type Role = "driver" | "business" | "admin";
 
-// ─── Session Cookie Helper ───────────────────────────────────────────────────
-// Calls the server-side API route that creates the Firebase __session cookie.
-// This is CRITICAL: the middleware checks for this cookie on protected routes.
+// ─── Session Cookie Helper ────────────────────────────────────────────────────
+// Calls the server-side API route that mints a Firebase Admin session cookie.
+// CRITICAL: middleware checks for the httpOnly __session cookie on every
+// protected route. document.cookie cannot set httpOnly — only this route can.
 async function createServerSession(user: User): Promise<void> {
   const idToken = await user.getIdToken();
   const res = await fetch("/api/session/login", {
@@ -44,150 +43,63 @@ async function createServerSession(user: User): Promise<void> {
 }
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Auth context — AuthContext owns onAuthStateChanged + getRedirectResult.
+  // We just read the stable values it exposes.
+  const { user, role, setRole, initialized } = useAuth();
+
+  // Firebase instances — initialized once on mount
   const [auth, setAuth] = useState<Auth | null>(null);
   const [db, setDb] = useState<Firestore | null>(null);
   const [firebaseReady, setFirebaseReady] = useState(false);
 
-  const router = useRouter();
-  const { setRole } = useAuth();
-
-  useEffect(() => {
-    const handleRedirectResult = async () => {
-      const firebaseApp = initFirebaseClient();
-      if (!firebaseApp) {
-        setProcessingRedirect(false);
-        return;
-      }
-
-      const authInstance = getFirebaseAuth();
-      if (!authInstance) {
-        setProcessingRedirect(false);
-        return;
-      }
-
-      setAuth(authInstance);
-      setDb(getFirestore(firebaseApp));
-      setFirebaseReady(true);
-
-      const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
-        if (user) {
-          console.log("[Login] Existing user detected:", user.email);
-          try {
-            // Ensure server session cookie exists for middleware
-            await createServerSession(user);
-          } catch (err) {
-            console.error("[Login] Failed to create server session:", err);
-          }
-
-          const uid = user.uid;
-          const firestoreDb = getFirestore(firebaseApp);
-          const ref = doc(firestoreDb, "users", uid);
-          const snap = await getDoc(ref);
-
-          if (!snap.exists()) {
-            console.log("[Login] Existing auth, no doc - going to onboarding");
-            localStorage.removeItem("role");
-            setRole(null);
-            setProcessingRedirect(false);
-            router.push(ONBOARDING_ROUTE);
-            return;
-          }
-
-          const data = snap.data();
-          const userRole = data?.role as Role | undefined;
-
-          if (!userRole) {
-            console.log("[Login] Existing auth, no role - going to onboarding");
-            localStorage.removeItem("role");
-            setRole(null);
-            setProcessingRedirect(false);
-            router.push(ONBOARDING_ROUTE);
-            return;
-          }
-
-          console.log("[Login] Existing user with role:", userRole);
-          setProcessingRedirect(false);
-          routeByRole(userRole);
-          return;
-        }
-
-        // No existing user — check if returning from Google redirect
-        try {
-          console.log("[Login] Checking for redirect result...");
-          const result = await getRedirectResult(authInstance);
-
-          if (result) {
-            console.log("[Login] Redirect result received:", result.user.email);
-
-            // Create server session cookie before any protected redirect
-            await createServerSession(result.user);
-
-            const uid = result.user.uid;
-            const firestoreDb = getFirestore(firebaseApp);
-            const ref = doc(firestoreDb, "users", uid);
-            const snap = await getDoc(ref);
-
-            if (!snap.exists()) {
-              console.log("[Login] New user, creating Firestore doc");
-              await setDoc(
-                ref,
-                {
-                  email: result.user.email ?? "",
-                  role: null,
-                  phone: "",
-                  name: "",
-                  businessName: null,
-                  credits: 3,
-                  createdAt: Date.now(),
-                },
-                { merge: true }
-              );
-              localStorage.removeItem("role");
-              setRole(null);
-              setProcessingRedirect(false);
-              router.push(ONBOARDING_ROUTE);
-              return;
-            }
-
-            const data = snap.data();
-            const userRole = data?.role as Role | undefined;
-
-            if (!userRole) {
-              console.log("[Login] Existing user, no role - going to onboarding");
-              localStorage.removeItem("role");
-              setRole(null);
-              setProcessingRedirect(false);
-              router.push(ONBOARDING_ROUTE);
-              return;
-            }
-
-            console.log("[Login] Existing user with role:", userRole);
-            setProcessingRedirect(false);
-            routeByRole(userRole);
-          } else {
-            console.log("[Login] No redirect result - showing login page");
-            setProcessingRedirect(false);
-          }
-        } catch (err: any) {
-          console.error("[Login] Redirect result error:", err);
-          setError(translateError(err?.code, err?.message));
-          setProcessingRedirect(false);
-        }
-      });
-
-      return () => unsubscribe();
-    };
-
-    handleRedirectResult();
-  }, [router, setRole]);
-
+  // UI state
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [processingRedirect, setProcessingRedirect] = useState(true);
+
+  // ─── Initialize Firebase instances ───────────────────────────────────────
+  useEffect(() => {
+    const firebaseApp = initFirebaseClient();
+    if (!firebaseApp) return;
+    setAuth(getAuth(firebaseApp));
+    setDb(getFirestore(firebaseApp));
+    setFirebaseReady(true);
+  }, []);
+
+  // ─── Redirect once auth is known ─────────────────────────────────────────
+  // AuthContext sets initialized=true after onAuthStateChanged fires once.
+  // Only then do we act — prevents flash-of-login-form for already-authed users.
+  useEffect(() => {
+    if (!initialized) return;
+
+    if (user && role) {
+      routeByRole(role);
+    } else if (user && !role) {
+      router.push(ONBOARDING_ROUTE);
+    }
+  }, [user, role, initialized, router]);
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+  const routeByRole = (userRole: Role) => {
+    const redirectTo = searchParams.get("redirect");
+    if (redirectTo && redirectTo.startsWith("/")) {
+      router.push(redirectTo);
+    } else if (userRole === "driver") {
+      router.push("/driver");
+    } else if (userRole === "business") {
+      router.push("/business");
+    } else if (userRole === "admin") {
+      router.push("/admin");
+    } else {
+      router.push("/");
+    }
+  };
 
   const passwordValid = (pwd: string) => {
     const hasUpper = /[A-Z]/.test(pwd);
@@ -230,17 +142,6 @@ export default function LoginPage() {
     }
   };
 
-  const routeByRole = (userRole: Role | undefined) => {
-    if (userRole) {
-      setRole(userRole);
-      if (typeof window !== "undefined") localStorage.setItem("role", userRole);
-    }
-    if (userRole === "driver") router.push("/driver");
-    else if (userRole === "business") router.push("/business");
-    else if (userRole === "admin") router.push("/admin");
-    else router.push("/");
-  };
-
   const sendToOnboarding = async (uid: string, emailValue: string | null) => {
     if (!db) { setError("Firebase is not configured."); return; }
     const ref = doc(db, "users", uid);
@@ -261,6 +162,7 @@ export default function LoginPage() {
     router.push(ONBOARDING_ROUTE);
   };
 
+  // ─── Email / password submit ──────────────────────────────────────────────
   const handleSubmit = async () => {
     setError(null);
     if (!auth || !db) { setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars."); return; }
@@ -276,7 +178,7 @@ export default function LoginPage() {
       if (mode === "login") {
         const userCred = await signInWithEmailAndPassword(auth, email, password);
 
-        // CRITICAL: Create server session cookie so middleware lets user through
+        // CRITICAL: mint httpOnly __session cookie before any protected redirect
         await createServerSession(userCred.user);
 
         const uid = userCred.user.uid;
@@ -302,7 +204,7 @@ export default function LoginPage() {
       } else {
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
 
-        // CRITICAL: Create server session cookie for newly registered user
+        // CRITICAL: mint httpOnly __session cookie for newly registered user
         await createServerSession(userCred.user);
 
         const uid = userCred.user.uid;
@@ -332,6 +234,11 @@ export default function LoginPage() {
     }
   };
 
+  // ─── Google redirect login ────────────────────────────────────────────────
+  // Uses signInWithRedirect (not popup) to avoid COOP issues.
+  // AuthContext handles getRedirectResult on the next page load.
+  // createServerSession is called from handleSubmit path after redirect resolves
+  // via the useEffect above watching [user, role, initialized].
   const handleGoogleLogin = async () => {
     setError(null);
     if (!auth) { setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars."); return; }
@@ -349,7 +256,10 @@ export default function LoginPage() {
     }
   };
 
-  if (processingRedirect) {
+  // ─── Render guards ────────────────────────────────────────────────────────
+
+  // Guard 1: Auth not yet initialized — show spinner, never flash the form
+  if (!initialized) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
         <div className="text-center">
@@ -360,6 +270,19 @@ export default function LoginPage() {
     );
   }
 
+  // Guard 2: Already logged in with role — useEffect above is redirecting
+  if (user && role) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Login / Signup form ──────────────────────────────────────────────────
   return (
     <div className="flex items-center justify-center h-screen bg-gray-100">
       <div className="bg-white p-10 rounded-xl shadow-lg w-full max-w-md">
@@ -430,30 +353,28 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <>
-          <div className="flex items-center gap-2 my-6">
-            <span className="h-px flex-1 bg-gray-300" />
-            <span className="text-xs text-gray-400">OR</span>
-            <span className="h-px flex-1 bg-gray-300" />
-          </div>
+        <div className="flex items-center gap-2 my-6">
+          <span className="h-px flex-1 bg-gray-300" />
+          <span className="text-xs text-gray-400">OR</span>
+          <span className="h-px flex-1 bg-gray-300" />
+        </div>
 
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={googleLoading || loading || !firebaseReady}
-            className="w-full flex items-center justify-center gap-2 border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition disabled:bg-gray-200"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 533.5 544.3" xmlns="http://www.w3.org/2000/svg">
-              <path d="M533.5 278.4c0-17.4-1.5-34.1-4.3-50.4H272.1v95.3h147.2c-6.4 34.5-25.7 63.7-54.8 83.3v68h88.6c51.8-47.7 80.4-118.1 80.4-196.2z" fill="#4285f4" />
-              <path d="M272.1 544.3c73.7 0 135.6-24.4 180.8-66.1l-88.6-68c-24.6 16.5-56.2 26-92.2 26-70.9 0-131-47.9-152.6-112.3h-91.3v70.6c45.1 89.2 137.7 149.8 243.9 149.8z" fill="#34a853" />
-              <path d="M119.5 323.9c-10.5-31.5-10.5-65.4 0-96.9v-70.6H28.2c-37.9 75.8-37.9 162.3 0 238.1l91.3-70.6z" fill="#fbbc04" />
-              <path d="M272.1 107.7c38.9-.6 76.2 14 104.6 40.9l77.9-77.9C407.5 24.5 344.1-.3 272.1 0 165.9 0 73.3 60.6 28.2 149.8l91.3 70.6c21.6-64.4 81.7-112.3 152.6-112.7z" fill="#ea4335" />
-            </svg>
-            <span className="text-sm font-medium text-gray-700">
-              {googleLoading ? "Redirecting to Google..." : "Continue with Google"}
-            </span>
-          </button>
-        </>
+        <button
+          type="button"
+          onClick={handleGoogleLogin}
+          disabled={googleLoading || loading || !firebaseReady}
+          className="w-full flex items-center justify-center gap-2 border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition disabled:bg-gray-200"
+        >
+          <svg className="w-5 h-5" viewBox="0 0 533.5 544.3" xmlns="http://www.w3.org/2000/svg">
+            <path d="M533.5 278.4c0-17.4-1.5-34.1-4.3-50.4H272.1v95.3h147.2c-6.4 34.5-25.7 63.7-54.8 83.3v68h88.6c51.8-47.7 80.4-118.1 80.4-196.2z" fill="#4285f4" />
+            <path d="M272.1 544.3c73.7 0 135.6-24.4 180.8-66.1l-88.6-68c-24.6 16.5-56.2 26-92.2 26-70.9 0-131-47.9-152.6-112.3h-91.3v70.6c45.1 89.2 137.7 149.8 243.9 149.8z" fill="#34a853" />
+            <path d="M119.5 323.9c-10.5-31.5-10.5-65.4 0-96.9v-70.6H28.2c-37.9 75.8-37.9 162.3 0 238.1l91.3-70.6z" fill="#fbbc04" />
+            <path d="M272.1 107.7c38.9-.6 76.2 14 104.6 40.9l77.9-77.9C407.5 24.5 344.1-.3 272.1 0 165.9 0 73.3 60.6 28.2 149.8l91.3 70.6c21.6-64.4 81.7-112.3 152.6-112.7z" fill="#ea4335" />
+          </svg>
+          <span className="text-sm font-medium text-gray-700">
+            {googleLoading ? "Redirecting to Google..." : "Continue with Google"}
+          </span>
+        </button>
       </div>
     </div>
   );
