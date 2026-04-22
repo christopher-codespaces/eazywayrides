@@ -1,11 +1,16 @@
 "use client";
 
-/**
- * Auth Context Re-export
- * =============================================================================
- * This file re-exports the AuthProvider and useAuth from _hooks/useAuth
- * to maintain backward compatibility with imports from @/app/context/AuthContext
- */
+import { createContext, useContext, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signOut,
+  type User,
+} from "firebase/auth";
+import { getFirestore, doc, getDoc } from "firebase/firestore";
+import { useRouter } from "next/navigation";
+import { initFirebaseClient } from "@/lib/firebaseClient";
 
 type Role = "driver" | "business" | "admin";
 
@@ -49,18 +54,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   // ─── Logout ──────────────────────────────────────────────────────────────
-  // Calls the server-side API route first so the httpOnly __session cookie is
-  // cleared before the client-side Firebase signOut. This ensures middleware
-  // immediately reflects the signed-out state on the very next request.
   const logout = async () => {
-    // 1. Clear httpOnly server session cookie
     try {
       await fetch("/api/session/logout", { method: "POST" });
     } catch (err) {
       console.error("[AuthContext] Failed to clear server session:", err);
     }
 
-    // 2. Sign out Firebase client auth
     try {
       const app = initFirebaseClient();
       if (app) {
