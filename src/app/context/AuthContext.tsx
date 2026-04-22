@@ -35,6 +35,39 @@ interface AuthContextType {
   refreshUserData: () => Promise<void>;
 }
 
+// ─── Safe localStorage wrapper ────────────────────────────────────────────────
+// localStorage is unavailable in SSR and blocked in sandboxed iframe
+// environments (Vercel preview, some browsers). All reads/writes MUST go
+// through these helpers to avoid a silent crash that prevents AuthProvider
+// from ever mounting — which causes initialized to stay false forever and
+// leaves the login page spinning indefinitely.
+const safeStorage = {
+  get(key: string): string | null {
+    try {
+      if (typeof window === "undefined") return null;
+      return window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key: string, value: string): void {
+    try {
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(key, value);
+    } catch {
+      // silently ignore — in-memory state in React is the source of truth
+    }
+  },
+  remove(key: string): void {
+    try {
+      if (typeof window === "undefined") return;
+      window.localStorage.removeItem(key);
+    } catch {
+      // silently ignore
+    }
+  },
+};
+
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -43,8 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
   const [role, setRole] = useState<Role | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = localStorage.getItem("role");
+    // Safe read — will not throw even if localStorage is blocked
+    const stored = safeStorage.get("role");
     if (stored === "driver" || stored === "business" || stored === "admin") {
       return stored;
     }
@@ -74,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setUserData(null);
     setRole(null);
-    if (typeof window !== "undefined") localStorage.removeItem("role");
+    safeStorage.remove("role");
     router.push("/login");
   };
 
@@ -122,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUserData(data);
           if (data.role) {
             setRole(data.role);
-            if (typeof window !== "undefined") localStorage.setItem("role", data.role);
+            safeStorage.set("role", data.role);
           }
         } else {
           setUserData(null);
@@ -130,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setUserData(null);
         setRole(null);
-        if (typeof window !== "undefined") localStorage.removeItem("role");
+        safeStorage.remove("role");
       }
 
       setLoading(false);
