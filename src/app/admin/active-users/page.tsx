@@ -301,9 +301,8 @@ export default function ActiveUsersPage() {
             </div>
 
             {/* Desktop table */}
-            <div className="hidden sm:block">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
+            <div className="hidden sm:block table-scroll">
+              <table className="w-full text-left min-w-[600px]">
                   <thead className="bg-zinc-50 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
                     <tr>
                       <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
