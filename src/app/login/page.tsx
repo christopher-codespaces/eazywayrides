@@ -8,8 +8,7 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   GoogleAuthProvider,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   type Auth,
   type User,
 } from "firebase/auth";
@@ -33,7 +32,6 @@ type Role = "driver" | "business" | "admin";
 // ─── Session Cookie Helper ────────────────────────────────────────────────────
 async function createServerSession(user: User): Promise<void> {
   // forceRefresh=true ensures Admin SDK always gets a fresh token (<5 min old)
-  // Prevents intermittent 401s from cached tokens older than 5 minutes
   const idToken = await user.getIdToken(/* forceRefresh= */ true);
   const res = await fetch("/api/session/login", {
     method: "POST",
@@ -47,7 +45,7 @@ async function createServerSession(user: User): Promise<void> {
 function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, role, setRole, initialized } = useAuth();
+  const { user, role, initialized } = useAuth();
 
   // Firebase instances — initialized once on mount
   const [auth, setAuth] = useState<Auth | null>(null);
@@ -62,9 +60,7 @@ function LoginPageInner() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // ─── Guard: true while handleSubmit / Google redirect is in flight ───────────
-  // Prevents the page-load useEffect from firing a competing redirect
-  // while the explicit submit flow is already routing the user.
+  // ─── Guard: true while a submit / Google popup is in flight ──────────────
   const isSubmitting = useRef(false);
 
   // ─── Initialize Firebase instances ───────────────────────────────────────
@@ -76,73 +72,10 @@ function LoginPageInner() {
     setFirebaseReady(true);
   }, []);
 
-  // ─── Google redirect result handler ────────────────────────────────────
-  // Runs once on mount after Google redirects back to the app.
-  // Mints the __session cookie then routes by role.
-  useEffect(() => {
-    if (!auth || !db) return;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (!result || cancelled) return;
-
-        isSubmitting.current = true;
-        setGoogleLoading(true);
-
-        await createServerSession(result.user);
-
-        const uid = result.user.uid;
-        const ref = doc(db, "users", uid);
-        const snap = await getDoc(ref);
-
-        if (!snap.exists()) {
-          await setDoc(ref, {
-            email: result.user.email ?? "",
-            role: null,
-            phone: "",
-            name: result.user.displayName ?? "",
-            businessName: null,
-            credits: 3,
-            createdAt: Date.now(),
-          });
-          router.push(ONBOARDING_ROUTE);
-          return;
-        }
-
-        const data = snap.data();
-        const userRole = data?.role as Role | undefined;
-
-        if (!userRole) {
-          router.push(ONBOARDING_ROUTE);
-          return;
-        }
-
-        routeByRole(userRole);
-      } catch (err: any) {
-        console.error("[Login] Google redirect result error:", err);
-        isSubmitting.current = false;
-        setGoogleLoading(false);
-        // FIX 1: Surface the error to the user — loop is no longer silent
-        const msg = err?.message?.includes("server session")
-          ? "Login succeeded but session creation failed. Please try again."
-          : translateError(err?.code, err?.message);
-        setError(msg || "Google sign-in failed. Please try again or use email/password.");
-      }
-    })();
-
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth, db]);
-
   // ─── Page-load redirect (already-authed users only) ──────────────────────
-  // Fires ONLY when the user is already logged in on arrival (e.g. back-button
-  // or direct navigation to /login while a session is live).
-  // Gated by isSubmitting so it never races with handleSubmit / Google flow.
   useEffect(() => {
     if (!initialized) return;
-    if (isSubmitting.current) return; // explicit submit owns routing, stand down
+    if (isSubmitting.current) return;
 
     if (user && role) {
       routeByRole(role);
@@ -219,14 +152,12 @@ function LoginPageInner() {
       return;
     }
 
-    isSubmitting.current = true; // lock out the page-load useEffect
+    isSubmitting.current = true;
     setLoading(true);
 
     try {
       if (mode === "login") {
         const userCred = await signInWithEmailAndPassword(auth, email, password);
-
-        // CRITICAL: mint httpOnly __session cookie before any protected redirect
         await createServerSession(userCred.user);
 
         const uid = userCred.user.uid;
@@ -247,13 +178,10 @@ function LoginPageInner() {
         }
 
         await updateDoc(doc(db, "users", uid), { lastLoginAt: serverTimestamp() });
-        routeByRole(userRole); // sole owner of redirect after email login
+        routeByRole(userRole);
 
       } else {
-        // Sign up: create Firebase user + server session + Firestore doc
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
-
-        // CRITICAL: mint httpOnly __session cookie for newly registered user
         await createServerSession(userCred.user);
 
         const uid = userCred.user.uid;
@@ -279,10 +207,10 @@ function LoginPageInner() {
           { merge: true }
         );
 
-        router.push(ONBOARDING_ROUTE); // new users always go to onboarding
+        router.push(ONBOARDING_ROUTE);
       }
     } catch (err: any) {
-      isSubmitting.current = false; // unlock on error so user can retry
+      isSubmitting.current = false;
       const msg = translateError(err?.code, err?.message);
       if (msg) setError(msg);
     } finally {
@@ -290,30 +218,70 @@ function LoginPageInner() {
     }
   };
 
-  // ─── Google redirect login ────────────────────────────────────────────────
+  // ─── Google popup login ───────────────────────────────────────────────────
+  // Uses signInWithPopup instead of signInWithRedirect.
+  // signInWithRedirect is broken on Next.js App Router + Vercel: the router
+  // intercepts the return navigation before Firebase can read the pending
+  // credential from IndexedDB, so getRedirectResult() always returns null.
+  // signInWithPopup resolves in the same JS execution context — no page
+  // navigation, no race condition, no infinite loop.
   const handleGoogleLogin = async () => {
     setError(null);
-    if (!auth) { setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars."); return; }
-    isSubmitting.current = true; // lock out page-load useEffect for redirect flow
+    if (!auth || !db) { setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars."); return; }
+
+    isSubmitting.current = true;
     setGoogleLoading(true);
+
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      await signInWithRedirect(auth, provider);
-      // Page navigates away — execution stops here.
-      // On return, the getRedirectResult useEffect above takes over.
+
+      // Popup resolves here — no page navigation, result is guaranteed
+      const result = await signInWithPopup(auth, provider);
+
+      await createServerSession(result.user);
+
+      const uid = result.user.uid;
+      const ref = doc(db, "users", uid);
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+        await setDoc(ref, {
+          email: result.user.email ?? "",
+          role: null,
+          phone: "",
+          name: result.user.displayName ?? "",
+          businessName: null,
+          credits: 3,
+          createdAt: Date.now(),
+        });
+        router.push(ONBOARDING_ROUTE);
+        return;
+      }
+
+      const data = snap.data();
+      const userRole = data?.role as Role | undefined;
+
+      if (!userRole) {
+        router.push(ONBOARDING_ROUTE);
+        return;
+      }
+
+      routeByRole(userRole);
+
     } catch (err: any) {
-      console.error("[Login] Google redirect error:", err);
+      console.error("[Login] Google popup error:", err);
       isSubmitting.current = false;
-      const msg = translateError(err?.code, err?.message);
-      if (msg) setError(msg);
       setGoogleLoading(false);
+      const msg = err?.message?.includes("server session")
+        ? "Login succeeded but session creation failed. Please try again."
+        : translateError(err?.code, err?.message);
+      if (msg) setError(msg);
     }
   };
 
   // ─── Render guards ────────────────────────────────────────────────────────
 
-  // Guard 1: Auth not yet initialized — show spinner, never flash the form
   if (!initialized) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
@@ -325,7 +293,6 @@ function LoginPageInner() {
     );
   }
 
-  // Guard 2: Already logged in with role — page-load useEffect is redirecting
   if (user && role && !isSubmitting.current) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
@@ -427,7 +394,7 @@ function LoginPageInner() {
             <path d="M272.1 107.7c38.9-.6 76.2 14 104.6 40.9l77.9-77.9C407.5 24.5 344.1-.3 272.1 0 165.9 0 73.3 60.6 28.2 149.8l91.3 70.6c21.6-64.4 81.7-112.3 152.6-112.7z" fill="#ea4335" />
           </svg>
           <span className="text-sm font-medium text-gray-700">
-            {googleLoading ? "Redirecting to Google..." : "Continue with Google"}
+            {googleLoading ? "Signing in with Google..." : "Continue with Google"}
           </span>
         </button>
       </div>
