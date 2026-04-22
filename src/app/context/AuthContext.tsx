@@ -1,4 +1,4 @@
-"use client";
+\"use client\";
 
 import {
   createContext,
@@ -6,19 +6,21 @@ import {
   useEffect,
   useState,
   ReactNode,
-} from "react";
-import { onAuthStateChanged, getAuth, signOut, type User } from "firebase/auth";
-import { initFirebaseClient } from "@/lib/firebaseClient";
-import { getFirestore, doc, getDoc } from "firebase/firestore";
-import { useRouter } from "next/navigation";
+} from \"react\";
+import { onAuthStateChanged, getAuth, signOut, type User } from \"firebase/auth\";
+import { initFirebaseClient } from \"@/lib/firebaseClient\";
+import { getFirestore, doc, getDoc } from \"firebase/firestore\";
+import { useRouter } from \"next/navigation\";
 
-type Role = "driver" | "business" | "admin";
+type Role = \"driver\" | \"business\" | \"admin\";
 
 interface UserData {
   email: string;
   role: Role;
   name?: string;
   businessName?: string;
+  phone?: string;
+  credits?: number;
 }
 
 interface AuthContextType {
@@ -27,7 +29,10 @@ interface AuthContextType {
   role: Role | null;
   setRole: (role: Role | null) => void;
   loading: boolean;
+  /** True once Firebase auth state has been checked at least once */
+  initialized: boolean;
   logout: () => Promise<void>;
+  refreshUserData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -36,10 +41,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const [role, setRole] = useState<Role | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = localStorage.getItem("role");
-    if (stored === "driver" || stored === "business" || stored === "admin") {
+    if (typeof window === \"undefined\") return null;
+    const stored = localStorage.getItem(\"role\");
+    if (stored === \"driver\" || stored === \"business\" || stored === \"admin\") {
       return stored;
     }
     return null;
@@ -47,15 +53,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const router = useRouter();
 
+  // ─── Logout ──────────────────────────────────────────────────────────────
+  // Calls the server-side API route first so the httpOnly __session cookie is
+  // cleared before the client-side Firebase signOut. This ensures middleware
+  // immediately reflects the signed-out state on the very next request.
   const logout = async () => {
-    // Clear the server-side __session cookie so middleware reflects sign-out
+    // 1. Clear httpOnly server session cookie
     try {
-      await fetch("/api/session/logout", { method: "POST" });
+      await fetch(\"/api/session/logout\", { method: \"POST\" });
     } catch (err) {
-      console.error("[AuthContext] Failed to clear server session:", err);
+      console.error(\"[AuthContext] Failed to clear server session:\", err);
     }
 
-    // Sign out of Firebase client auth
+    // 2. Sign out Firebase client auth
     try {
       const app = initFirebaseClient();
       if (app) {
@@ -63,20 +73,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await signOut(auth);
       }
     } catch (err) {
-      console.error("[AuthContext] Firebase signOut error:", err);
+      console.error(\"[AuthContext] Firebase signOut error:\", err);
     }
 
     setUser(null);
     setUserData(null);
     setRole(null);
-    if (typeof window !== "undefined") localStorage.removeItem("role");
-    router.push("/login");
+    if (typeof window !== \"undefined\") localStorage.removeItem(\"role\");
+    router.push(\"/login\");
   };
 
+  // ─── Refresh user data from Firestore ────────────────────────────────────
+  const refreshUserData = async () => {
+    const app = initFirebaseClient();
+    if (!user || !app) return;
+
+    try {
+      const db = getFirestore(app);
+      const ref = doc(db, \"users\", user.uid);
+      const snap = await getDoc(ref);
+
+      if (snap.exists()) {
+        const data = snap.data() as UserData;
+        setUserData(data);
+        setRole(data.role ?? null);
+      }
+    } catch (err) {
+      console.error(\"[AuthContext] Error refreshing user data:\", err);
+    }
+  };
+
+  // ─── Auth state listener ──────────────────────────────────────────────────
   useEffect(() => {
     const app = initFirebaseClient();
     if (!app) {
       setLoading(false);
+      setInitialized(true);
       return;
     }
 
@@ -87,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(currentUser);
 
       if (currentUser) {
-        const ref = doc(db, "users", currentUser.uid);
+        const ref = doc(db, \"users\", currentUser.uid);
         const snap = await getDoc(ref);
 
         if (snap.exists()) {
@@ -95,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUserData(data);
           if (data.role) {
             setRole(data.role);
-            if (typeof window !== "undefined") localStorage.setItem("role", data.role);
+            if (typeof window !== \"undefined\") localStorage.setItem(\"role\", data.role);
           }
         } else {
           setUserData(null);
@@ -103,10 +135,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setUserData(null);
         setRole(null);
-        if (typeof window !== "undefined") localStorage.removeItem("role");
+        if (typeof window !== \"undefined\") localStorage.removeItem(\"role\");
       }
 
       setLoading(false);
+      setInitialized(true);
     });
 
     return () => unsubscribe();
@@ -120,7 +153,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         setRole,
         loading,
+        initialized,
         logout,
+        refreshUserData,
       }}
     >
       {children}
@@ -130,6 +165,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) throw new Error(\"useAuth must be used within AuthProvider\");
   return ctx;
 };
