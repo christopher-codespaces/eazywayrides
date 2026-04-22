@@ -8,7 +8,7 @@ import {
   orderBy,
   getDocs,
 } from "firebase/firestore";
-import { app } from "@/lib/firebase";
+import { app } from "@/lib/firebaseClient";
 
 type Role = "driver" | "business" | "admin";
 
