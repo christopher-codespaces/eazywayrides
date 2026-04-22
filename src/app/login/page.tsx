@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -42,7 +43,8 @@ async function createServerSession(user: User): Promise<void> {
   if (!res.ok) throw new Error("Could not create server session");
 }
 
-export default function LoginPage() {
+// ─── Inner component — owns all logic + useSearchParams ──────────────────────
+function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -383,5 +385,23 @@ export default function LoginPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+// ─── Page export — Suspense boundary required for useSearchParams SSR ─────────
+// Next.js 16 static generation throws if useSearchParams() is called outside
+// a Suspense boundary. LoginPageInner owns all logic; this wrapper satisfies
+// the prerender requirement without touching any auth or session code.
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-screen bg-gray-100">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+        </div>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }
