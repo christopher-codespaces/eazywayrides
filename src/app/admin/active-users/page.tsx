@@ -59,15 +59,9 @@ const statusChip = (isActive: boolean) =>
     : "bg-zinc-100 text-zinc-900 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-700";
 
 export default function ActiveUsersPage() {
-  /**
-   * Firestore client (client SDK)
-   * ---------------------------------------------------------------------------
-   * Initialise only when `app` exists to avoid crashes when env vars are missing.
-   */
   const db = useMemo(() => (app ? getFirestore(app) : null), []);
 
   const [activeWindowMinutes, setActiveWindowMinutes] = useState(60);
-
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -157,7 +151,7 @@ export default function ActiveUsersPage() {
             </h1>
             <p className="text-base text-zinc-700 dark:text-zinc-300">
               Users are sorted by <span className="font-semibold">lastLoginAt</span>.
-              “Active” is based on the selected window.
+              &ldquo;Active&rdquo; is based on the selected window.
             </p>
           </div>
 
@@ -220,7 +214,7 @@ export default function ActiveUsersPage() {
           </div>
         </div>
 
-        {/* Loading / Error */}
+        {/* Loading */}
         {loading && (
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
             <p className="text-base text-zinc-700 dark:text-zinc-300">
@@ -229,6 +223,7 @@ export default function ActiveUsersPage() {
           </div>
         )}
 
+        {/* Error */}
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm dark:border-red-900/50 dark:bg-red-950/40">
             <p className="text-base font-semibold text-red-700 dark:text-red-200">
@@ -301,84 +296,84 @@ export default function ActiveUsersPage() {
             </div>
 
             {/* Desktop table */}
-            <div className="hidden sm:block table-scroll">
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-left min-w-[600px]">
-                  <thead className="bg-zinc-50 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
-                    <tr>
-                      <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
-                        Role
-                      </th>
-                      <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
-                        Name
-                      </th>
-                      <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
-                        Email
-                      </th>
-                      <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
-                        Last Active
-                      </th>
-                      <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
+                <thead className="bg-zinc-50 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+                  <tr>
+                    <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
+                      Role
+                    </th>
+                    <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
+                      Name
+                    </th>
+                    <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
+                      Email
+                    </th>
+                    <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
+                      Last Active
+                    </th>
+                    <th className="p-4 text-sm font-extrabold uppercase tracking-wide">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
 
-                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {displayUsers.map((u) => {
-                      const t = u.lastLoginAt?.getTime();
-                      const isActive = typeof t === "number" && t >= activeCutoffMs;
+                <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                  {displayUsers.map((u) => {
+                    const t = u.lastLoginAt?.getTime();
+                    const isActive = typeof t === "number" && t >= activeCutoffMs;
 
-                      const displayName =
-                        u.role === "business"
-                          ? u.businessName || "—"
-                          : u.name || "—";
+                    const displayName =
+                      u.role === "business"
+                        ? u.businessName || "—"
+                        : u.name || "—";
 
-                      return (
-                        <tr
-                          key={u.id}
-                          className="bg-white hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900/40"
-                        >
-                          <td className="p-4">
-                            <span
-                              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-bold ring-1 ${roleChip(
-                                u.role
-                              )}`}
-                            >
-                              {roleLabel(u.role)}
-                            </span>
-                          </td>
+                    return (
+                      <tr
+                        key={u.id}
+                        className="bg-white hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900/40"
+                      >
+                        <td className="p-4">
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-bold ring-1 ${roleChip(
+                              u.role
+                            )}`}
+                          >
+                            {roleLabel(u.role)}
+                          </span>
+                        </td>
 
-                          <td className="p-4 text-base font-semibold">
-                            {displayName}
-                          </td>
+                        <td className="p-4 text-base font-semibold">
+                          {displayName}
+                        </td>
 
-                          <td className="p-4 text-base text-zinc-800 dark:text-zinc-200">
-                            {u.email ?? "—"}
-                          </td>
+                        <td className="p-4 text-base text-zinc-800 dark:text-zinc-200">
+                          {u.email ?? "—"}
+                        </td>
 
-                          <td className="p-4 text-base text-zinc-800 dark:text-zinc-200">
-                            {formatDateTime(u.lastLoginAt)}
-                          </td>
+                        <td className="p-4 text-base text-zinc-800 dark:text-zinc-200">
+                          {formatDateTime(u.lastLoginAt)}
+                        </td>
 
-                          <td className="p-4">
-                            <span
-                              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-extrabold ring-1 ${statusChip(
-                                isActive
-                              )}`}
-                            >
-                              {isActive ? "ACTIVE" : "INACTIVE"}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        <td className="p-4">
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-extrabold ring-1 ${statusChip(
+                              isActive
+                            )}`}
+                          >
+                            {isActive ? "ACTIVE" : "INACTIVE"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
+            {/* Footer note — INSIDE the results wrapper */}
             <div className="border-t border-zinc-200 px-5 py-4 text-sm text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
-              Note: “Active” is computed client-side using your selected time window.
+              Note: &ldquo;Active&rdquo; is computed client-side using your selected time window.
             </div>
           </div>
         )}
