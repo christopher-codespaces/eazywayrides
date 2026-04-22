@@ -9,6 +9,7 @@ import {
   UploadCloud,
   PlayCircle,
 } from "lucide-react";
+import { ProtectedRoute } from "@/app/components/ProtectedRoute";
 
 const BRAND = {
   orange: "#F36C21",
@@ -17,6 +18,14 @@ const BRAND = {
 };
 
 export default function DriverDashboardPage() {
+  return (
+    <ProtectedRoute allowedRoles={["driver"]}>
+      <DriverDashboardContent />
+    </ProtectedRoute>
+  );
+}
+
+function DriverDashboardContent() {
   const router = useRouter();
 
   return (

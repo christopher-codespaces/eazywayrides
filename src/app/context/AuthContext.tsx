@@ -1,16 +1,11 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  ReactNode,
-} from "react";
-import { onAuthStateChanged, getAuth, signOut, type User } from "firebase/auth";
-import { initFirebaseClient } from "@/lib/firebaseClient";
-import { getFirestore, doc, getDoc } from "firebase/firestore";
-import { useRouter } from "next/navigation";
+/**
+ * Auth Context Re-export
+ * =============================================================================
+ * This file re-exports the AuthProvider and useAuth from _hooks/useAuth
+ * to maintain backward compatibility with imports from @/app/context/AuthContext
+ */
 
 type Role = "driver" | "business" | "admin";
 

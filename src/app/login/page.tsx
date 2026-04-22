@@ -186,7 +186,7 @@ export default function LoginPage() {
         const snap = await getDoc(ref);
 
         if (!snap.exists()) {
-          await sendToOnboarding(uid, userCred.user.email ?? email);
+          router.push(ONBOARDING_ROUTE);
           return;
         }
 
@@ -194,7 +194,7 @@ export default function LoginPage() {
         const userRole = data?.role as Role | undefined;
 
         if (!userRole) {
-          await sendToOnboarding(uid, userCred.user.email ?? email);
+          router.push(ONBOARDING_ROUTE);
           return;
         }
 
@@ -215,15 +215,21 @@ export default function LoginPage() {
             role: null,
             phone: "",
             name: "",
+            firstName: "",
+            lastName: "",
             businessName: null,
+            businessLocation: "",
+            businessDescription: "",
+            homeAddress: "",
+            homeLat: "",
+            homeLon: "",
+            billing: { credits: 3, totalSpent: 0 },
             credits: 3,
             createdAt: Date.now(),
           },
           { merge: true }
         );
 
-        localStorage.removeItem("role");
-        setRole(null);
         router.push(ONBOARDING_ROUTE);
       }
     } catch (err: any) {
@@ -346,10 +352,10 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading || googleLoading || !firebaseReady}
+            disabled={loading || googleLoading}
             className="w-full bg-blue-600 text-white py-3 rounded-lg mt-6 hover:bg-blue-700 transition disabled:bg-gray-400"
           >
-            {!firebaseReady ? "Loading..." : loading ? "Loading..." : mode === "login" ? "Login" : "Sign Up"}
+            {loading ? "Loading..." : mode === "login" ? "Login" : "Sign Up"}
           </button>
         </form>
 

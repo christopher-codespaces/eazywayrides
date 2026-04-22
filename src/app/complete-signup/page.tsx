@@ -318,6 +318,8 @@ export default function CompleteSignupPage() {
           homeAddress: "",
           homeLat: "",
           homeLon: "",
+          billing: { credits: 3, totalSpent: 0 },
+          credits: 3,
           updatedAt: Date.now(),
           lastLoginAt: serverTimestamp(),
         });
