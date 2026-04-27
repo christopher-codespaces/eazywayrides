@@ -187,14 +187,34 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## 👨‍💻 Built By
 
-**Ayush Sharma** — 4th Year CS Student (111/120 credits) · Systems Builder · Technical Consultant
+---
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Ayush%20Sharma-0077B5?style=flat&logo=linkedin)](https://www.linkedin.com/in/ayush-sharma-swe)
+## 👥 Team & Credits
+
+EazyWayRides is a **Cape Neto Solutions** product, developed for their client as a full-stack MVP platform.
+
+### Lead Developer
+**[Christopher Musamakombe](https://www.linkedin.com/in/christophermusamakombe/)** — Project Lead & Core Developer
+
+### Production & Deployment
+**[Ayush Sharma](https://www.linkedin.com/in/ayush-sharma-swe)** — Systems Builder & Technical Consultant
+
+- Auth system redesign and deployment on Vercel
+- signInWithRedirect → signInWithPopup migration (fixed infinite login loop)
+- Firebase Admin SDK session cookie architecture
+- Middleware role-based route protection
+- Full production deployment and monitoring
+
+### Built By
+**[Cape Neto Solutions](https://www.linkedin.com/company/cape-neto-solutions/)** — Software Development Studio
 
 ---
 
 <div align="center">
+
 <sub>Production deployment on Vercel · Firebase Auth + Firestore · Next.js 14 App Router · TypeScript 99.2%</sub>
+
+<sub>Built for Cape Neto Solutions · [LinkedIn](https://www.linkedin.com/company/cape-neto-solutions/) · [Christopher](https://www.linkedin.com/in/christophermusamakombe/) · [Ayush](https://www.linkedin.com/in/ayush-sharma-swe)</sub>
+
 </div>
