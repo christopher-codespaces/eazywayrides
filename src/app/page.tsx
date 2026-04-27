@@ -12,32 +12,27 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/app/_hooks/useAuth";
+import { useAuth } from "@/app/context/AuthContext";
 
 export default function RootPage() {
   const router = useRouter();
   const { user, role, initialized } = useAuth();
 
   useEffect(() => {
-    // Wait for auth to initialize
     if (!initialized) return;
 
     if (!user) {
-      // Not logged in - redirect to login
       router.replace("/login");
     } else if (role) {
-      // Logged in with role - redirect to appropriate dashboard
       if (role === "driver") router.replace("/driver");
       else if (role === "business") router.replace("/business");
       else if (role === "admin") router.replace("/admin");
       else router.replace("/login");
     } else {
-      // Logged in but no role - needs onboarding
       router.replace("/complete-signup");
     }
   }, [user, role, initialized, router]);
 
-  // Show loading while determining redirect
   return (
     <div className="flex items-center justify-center h-screen bg-gray-100">
       <div className="text-center">

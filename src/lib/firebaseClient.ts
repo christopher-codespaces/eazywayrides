@@ -9,7 +9,12 @@
  */
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import {
+  getAuth,
+  setPersistence,
+  browserLocalPersistence,
+  type Auth,
+} from "firebase/auth";
 
 /**
  * CRITICAL: Use the Firebase app domain, NOT your custom domain.
@@ -17,10 +22,11 @@ import { getAuth, type Auth } from "firebase/auth";
  * and avoid COOP/COEP issues in production.
  *
  * Format: {project-id}.firebaseapp.com
+ * Set NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN in your environment variables.
  */
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: "project-b-us-based.firebaseapp.com", // STRICT: Use Firebase app domain
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
@@ -49,9 +55,15 @@ export function initFirebaseClient(): FirebaseApp | null {
     } else {
       _app = getApps()[0];
     }
-    // Initialize auth immediately
+    // Initialize auth immediately and pin persistence to localStorage.
+    // Without this, Firebase defaults to sessionStorage/memory in some
+    // environments, wiping the redirect handshake state before
+    // getRedirectResult() can read it — causing an infinite /login loop.
     if (_app) {
       _auth = getAuth(_app);
+      setPersistence(_auth, browserLocalPersistence).catch((e) =>
+        console.warn("[Firebase] Could not set persistence:", e)
+      );
     }
     app = _app;
   }

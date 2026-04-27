@@ -1,44 +1,56 @@
 "use client";
 
-/**
- * Login Page
- * =============================================================================
- * Handles email/password and Google (redirect) authentication.
- *
- * Flow:
- * 1. User submits credentials or clicks Google login
- * 2. For Google: redirects to Google OAuth, then back to this page
- * 3. useAuth hook handles getRedirectResult and sets user/role
- * 4. This page watches role changes and redirects to appropriate dashboard
- */
-
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  getAuth,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   GoogleAuthProvider,
-  signInWithRedirect,
+  signInWithPopup,
   type Auth,
+  type User,
 } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 import { initFirebaseClient } from "@/lib/firebaseClient";
-import { useAuth } from "@/app/_hooks/useAuth";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+  type Firestore,
+} from "firebase/firestore";
+import { useAuth } from "@/app/context/AuthContext";
 
 const ONBOARDING_ROUTE = "/complete-signup";
 
 type Role = "driver" | "business" | "admin";
 
-export default function LoginPage() {
+// ─── Session Cookie Helper ────────────────────────────────────────────────────
+async function createServerSession(user: User): Promise<void> {
+  // forceRefresh=true ensures Admin SDK always gets a fresh token (<5 min old)
+  const idToken = await user.getIdToken(/* forceRefresh= */ true);
+  const res = await fetch("/api/session/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken }),
+  });
+  if (!res.ok) throw new Error("Could not create server session");
+}
+
+// ─── Inner component — owns all logic + useSearchParams ──────────────────────
+function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { role, user, initialized } = useAuth();
+  const { user, role, initialized } = useAuth();
 
-  // Firebase instances
+  // Firebase instances — initialized once on mount
   const [auth, setAuth] = useState<Auth | null>(null);
-  const [db, setDb] = useState<any>(null);
+  const [db, setDb] = useState<Firestore | null>(null);
+  const [firebaseReady, setFirebaseReady] = useState(false);
 
   // UI state
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -48,30 +60,32 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Initialize Firebase
+  // ─── Guard: true while a submit / Google popup is in flight ──────────────
+  const isSubmitting = useRef(false);
+
+  // ─── Initialize Firebase instances ───────────────────────────────────────
   useEffect(() => {
     const firebaseApp = initFirebaseClient();
     if (!firebaseApp) return;
-
     setAuth(getAuth(firebaseApp));
     setDb(getFirestore(firebaseApp));
+    setFirebaseReady(true);
   }, []);
 
-  // Handle redirects based on auth state
+  // ─── Page-load redirect (already-authed users only) ──────────────────────
   useEffect(() => {
-    // Wait for auth to be initialized
     if (!initialized) return;
+    if (isSubmitting.current) return;
 
-    // If user is already logged in with a role, redirect to dashboard
     if (user && role) {
       routeByRole(role);
-    }
-    // If user is logged in but no role, send to onboarding
-    else if (user && !role) {
+    } else if (user && !role) {
       router.push(ONBOARDING_ROUTE);
     }
-  }, [user, role, initialized, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, role, initialized]);
 
+  // ─── Helpers ─────────────────────────────────────────────────────────────
   const routeByRole = (userRole: Role) => {
     const redirectTo = searchParams.get("redirect");
     if (redirectTo && redirectTo.startsWith("/")) {
@@ -82,6 +96,8 @@ export default function LoginPage() {
       router.push("/business");
     } else if (userRole === "admin") {
       router.push("/admin");
+    } else {
+      router.push("/");
     }
   };
 
@@ -97,24 +113,15 @@ export default function LoginPage() {
 
   const translateError = (code: string, message?: string) => {
     switch (code) {
-      case "auth/invalid-email":
-        return "Please enter a valid email address.";
-      case "auth/email-already-in-use":
-        return "That email is already registered.";
-      case "auth/wrong-password":
-        return "Incorrect password.";
-      case "auth/user-not-found":
-        return "No account found with that email.";
-      case "auth/weak-password":
-        return "Your password is too weak.";
-      case "auth/too-many-requests":
-        return "Too many attempts. Try again later.";
-      case "auth/popup-closed-by-user":
-        return "";
-      case "auth/popup-blocked":
-        return "Popup was blocked. Please allow popups for this site.";
-      case "auth/cancelled-popup-request":
-        return "";
+      case "auth/invalid-email": return "Please enter a valid email address.";
+      case "auth/email-already-in-use": return "That email is already registered.";
+      case "auth/wrong-password": return "Incorrect password.";
+      case "auth/user-not-found": return "No account found with that email.";
+      case "auth/weak-password": return "Your password is too weak.";
+      case "auth/too-many-requests": return "Too many attempts. Try again later.";
+      case "auth/popup-closed-by-user": return "";
+      case "auth/popup-blocked": return "Popup was blocked. Please allow popups for this site.";
+      case "auth/cancelled-popup-request": return "";
       default:
         if (message?.includes("Cross-Origin-Opener-Policy")) {
           return "Browser security policy blocked the popup. Please try again or use email/password login.";
@@ -125,17 +132,8 @@ export default function LoginPage() {
 
   const handleForgotPassword = async () => {
     setError(null);
-
-    if (!email) {
-      setError("Please enter your email first.");
-      return;
-    }
-
-    if (!auth) {
-      setError("Firebase is not configured.");
-      return;
-    }
-
+    if (!email) { setError("Please enter your email first."); return; }
+    if (!auth) { setError("Firebase is not configured."); return; }
     try {
       await sendPasswordResetEmail(auth, email);
       alert("Password reset email sent! Check your inbox.");
@@ -144,29 +142,24 @@ export default function LoginPage() {
     }
   };
 
+  // ─── Email / password submit ──────────────────────────────────────────────
   const handleSubmit = async () => {
     setError(null);
-
-    if (!auth || !db) {
-      setError("Firebase is not configured.");
-      return;
-    }
-
-    if (!emailValid(email)) {
-      setError("Please enter a valid email.");
-      return;
-    }
-
+    if (!auth || !db) { setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars."); return; }
+    if (!emailValid(email)) { setError("Please enter a valid email."); return; }
     if (mode === "signup" && !passwordValid(password)) {
       setError("Password must have 6+ characters, 1 uppercase, 1 number, and 1 symbol.");
       return;
     }
 
+    isSubmitting.current = true;
     setLoading(true);
 
     try {
       if (mode === "login") {
         const userCred = await signInWithEmailAndPassword(auth, email, password);
+        await createServerSession(userCred.user);
+
         const uid = userCred.user.uid;
         const ref = doc(db, "users", uid);
         const snap = await getDoc(ref);
@@ -184,16 +177,14 @@ export default function LoginPage() {
           return;
         }
 
-        await updateDoc(ref, {
-          lastLoginAt: serverTimestamp(),
-        });
+        await updateDoc(doc(db, "users", uid), { lastLoginAt: serverTimestamp() });
+        routeByRole(userRole);
 
-        // AuthProvider will detect the user change and set the role
-        // The useEffect above will then redirect
       } else {
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
-        const uid = userCred.user.uid;
+        await createServerSession(userCred.user);
 
+        const uid = userCred.user.uid;
         await setDoc(
           doc(db, "users", uid),
           {
@@ -219,6 +210,7 @@ export default function LoginPage() {
         router.push(ONBOARDING_ROUTE);
       }
     } catch (err: any) {
+      isSubmitting.current = false;
       const msg = translateError(err?.code, err?.message);
       if (msg) setError(msg);
     } finally {
@@ -226,32 +218,70 @@ export default function LoginPage() {
     }
   };
 
+  // ─── Google popup login ───────────────────────────────────────────────────
+  // Uses signInWithPopup instead of signInWithRedirect.
+  // signInWithRedirect is broken on Next.js App Router + Vercel: the router
+  // intercepts the return navigation before Firebase can read the pending
+  // credential from IndexedDB, so getRedirectResult() always returns null.
+  // signInWithPopup resolves in the same JS execution context — no page
+  // navigation, no race condition, no infinite loop.
   const handleGoogleLogin = async () => {
     setError(null);
+    if (!auth || !db) { setError("Firebase is not configured. Missing NEXT_PUBLIC_FIREBASE_* env vars."); return; }
 
-    if (!auth) {
-      setError("Firebase is not configured.");
-      return;
-    }
-
+    isSubmitting.current = true;
     setGoogleLoading(true);
 
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
 
-      console.log("[Login] Initiating Google redirect...");
-      await signInWithRedirect(auth, provider);
-      // Page will reload after redirect - useAuth handles the result
+      // Popup resolves here — no page navigation, result is guaranteed
+      const result = await signInWithPopup(auth, provider);
+
+      await createServerSession(result.user);
+
+      const uid = result.user.uid;
+      const ref = doc(db, "users", uid);
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+        await setDoc(ref, {
+          email: result.user.email ?? "",
+          role: null,
+          phone: "",
+          name: result.user.displayName ?? "",
+          businessName: null,
+          credits: 3,
+          createdAt: Date.now(),
+        });
+        router.push(ONBOARDING_ROUTE);
+        return;
+      }
+
+      const data = snap.data();
+      const userRole = data?.role as Role | undefined;
+
+      if (!userRole) {
+        router.push(ONBOARDING_ROUTE);
+        return;
+      }
+
+      routeByRole(userRole);
+
     } catch (err: any) {
-      console.error("[Login] Google redirect error:", err);
-      const msg = translateError(err?.code, err?.message);
-      if (msg) setError(msg);
+      console.error("[Login] Google popup error:", err);
+      isSubmitting.current = false;
       setGoogleLoading(false);
+      const msg = err?.message?.includes("server session")
+        ? "Login succeeded but session creation failed. Please try again."
+        : translateError(err?.code, err?.message);
+      if (msg) setError(msg);
     }
   };
 
-  // Show loading while auth is initializing
+  // ─── Render guards ────────────────────────────────────────────────────────
+
   if (!initialized) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
@@ -263,9 +293,7 @@ export default function LoginPage() {
     );
   }
 
-  // If already logged in with role, the useEffect above will redirect
-  // This prevents showing the login form briefly before redirect
-  if (user && role) {
+  if (user && role && !isSubmitting.current) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
         <div className="text-center">
@@ -276,26 +304,22 @@ export default function LoginPage() {
     );
   }
 
+  // ─── Login / Signup form ──────────────────────────────────────────────────
   return (
     <div className="flex items-center justify-center h-screen bg-gray-100">
       <div className="bg-white p-10 rounded-xl shadow-lg w-full max-w-md">
         <div className="flex justify-center mb-6">
           <button
             className={`px-4 py-2 font-semibold ${
-              mode === "login"
-                ? "text-blue-600 border-b-2 border-blue-600"
-                : "text-gray-500"
+              mode === "login" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500"
             }`}
             onClick={() => setMode("login")}
           >
             Login
           </button>
-
           <button
             className={`px-4 py-2 font-semibold ${
-              mode === "signup"
-                ? "text-blue-600 border-b-2 border-blue-600"
-                : "text-gray-500"
+              mode === "signup" ? "text-blue-600 border-b-2 border-blue-600" : "text-gray-500"
             }`}
             onClick={() => setMode("signup")}
           >
@@ -308,10 +332,7 @@ export default function LoginPage() {
         </h1>
 
         <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmit();
-          }}
+          onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
           className="space-y-4"
         >
           <input
@@ -323,14 +344,11 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-
           <input
             type="password"
             placeholder="Password"
             className={`w-full p-3 border rounded-lg ${
-              !!error && mode === "signup" && !passwordValid(password)
-                ? "border-red-400"
-                : ""
+              !!error && mode === "signup" && !passwordValid(password) ? "border-red-400" : ""
             }`}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -366,36 +384,35 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={handleGoogleLogin}
-          disabled={googleLoading || loading}
+          disabled={googleLoading || loading || !firebaseReady}
           className="w-full flex items-center justify-center gap-2 border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition disabled:bg-gray-200"
         >
-          <svg
-            className="w-5 h-5"
-            viewBox="0 0 533.5 544.3"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M533.5 278.4c0-17.4-1.5-34.1-4.3-50.4H272.1v95.3h147.2c-6.4 34.5-25.7 63.7-54.8 83.3v68h88.6c51.8-47.7 80.4-118.1 80.4-196.2z"
-              fill="#4285f4"
-            />
-            <path
-              d="M272.1 544.3c73.7 0 135.6-24.4 180.8-66.1l-88.6-68c-24.6 16.5-56.2 26-92.2 26-70.9 0-131-47.9-152.6-112.3h-91.3v70.6c45.1 89.2 137.7 149.8 243.9 149.8z"
-              fill="#34a853"
-            />
-            <path
-              d="M119.5 323.9c-10.5-31.5-10.5-65.4 0-96.9v-70.6H28.2c-37.9 75.8-37.9 162.3 0 238.1l91.3-70.6z"
-              fill="#fbbc04"
-            />
-            <path
-              d="M272.1 107.7c38.9-.6 76.2 14 104.6 40.9l77.9-77.9C407.5 24.5 344.1-.3 272.1 0 165.9 0 73.3 60.6 28.2 149.8l91.3 70.6c21.6-64.4 81.7-112.3 152.6-112.7z"
-              fill="#ea4335"
-            />
+          <svg className="w-5 h-5" viewBox="0 0 533.5 544.3" xmlns="http://www.w3.org/2000/svg">
+            <path d="M533.5 278.4c0-17.4-1.5-34.1-4.3-50.4H272.1v95.3h147.2c-6.4 34.5-25.7 63.7-54.8 83.3v68h88.6c51.8-47.7 80.4-118.1 80.4-196.2z" fill="#4285f4" />
+            <path d="M272.1 544.3c73.7 0 135.6-24.4 180.8-66.1l-88.6-68c-24.6 16.5-56.2 26-92.2 26-70.9 0-131-47.9-152.6-112.3h-91.3v70.6c45.1 89.2 137.7 149.8 243.9 149.8z" fill="#34a853" />
+            <path d="M119.5 323.9c-10.5-31.5-10.5-65.4 0-96.9v-70.6H28.2c-37.9 75.8-37.9 162.3 0 238.1l91.3-70.6z" fill="#fbbc04" />
+            <path d="M272.1 107.7c38.9-.6 76.2 14 104.6 40.9l77.9-77.9C407.5 24.5 344.1-.3 272.1 0 165.9 0 73.3 60.6 28.2 149.8l91.3 70.6c21.6-64.4 81.7-112.3 152.6-112.7z" fill="#ea4335" />
           </svg>
           <span className="text-sm font-medium text-gray-700">
-            {googleLoading ? "Redirecting to Google..." : "Continue with Google"}
+            {googleLoading ? "Signing in with Google..." : "Continue with Google"}
           </span>
         </button>
       </div>
     </div>
+  );
+}
+
+// ─── Page export — Suspense boundary required for useSearchParams SSR ─────────
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-screen bg-gray-100">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+        </div>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }
