@@ -18,7 +18,6 @@ import {
   getAuth,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
   GoogleAuthProvider,
   signInWithRedirect,
   type Auth,
@@ -102,13 +101,21 @@ export default function LoginPage() {
       case "auth/email-already-in-use":
         return "That email is already registered.";
       case "auth/wrong-password":
-        return "Incorrect password.";
+        return "Incorrect password. Please check your password and try again.";
       case "auth/user-not-found":
         return "No account found with that email.";
+      case "auth/invalid-credential":
+        return "Invalid email or password. Please check your credentials and try again.";
+      case "auth/user-disabled":
+        return "This account has been disabled. Please contact support.";
       case "auth/weak-password":
         return "Your password is too weak.";
       case "auth/too-many-requests":
-        return "Too many attempts. Try again later.";
+        return "Too many failed attempts. Please try again later.";
+      case "auth/network-request-failed":
+        return "Network error. Please check your internet connection.";
+      case "auth/operation-not-allowed":
+        return "This sign-in method is not enabled. Please contact support.";
       case "auth/popup-closed-by-user":
         return "";
       case "auth/popup-blocked":
@@ -119,29 +126,15 @@ export default function LoginPage() {
         if (message?.includes("Cross-Origin-Opener-Policy")) {
           return "Browser security policy blocked the popup. Please try again or use email/password login.";
         }
+        if (message?.includes("Firebase: Error")) {
+          return "Authentication failed. Please check your credentials and try again.";
+        }
         return "Something went wrong. Please try again.";
     }
   };
 
-  const handleForgotPassword = async () => {
-    setError(null);
-
-    if (!email) {
-      setError("Please enter your email first.");
-      return;
-    }
-
-    if (!auth) {
-      setError("Firebase is not configured.");
-      return;
-    }
-
-    try {
-      await sendPasswordResetEmail(auth, email);
-      alert("Password reset email sent! Check your inbox.");
-    } catch (err: any) {
-      setError(err?.message || "Failed to send reset email.");
-    }
+  const handleForgotPassword = () => {
+    router.push(`/forgot-password?email=${encodeURIComponent(email)}`);
   };
 
   const handleSubmit = async () => {
@@ -346,7 +339,11 @@ export default function LoginPage() {
             </button>
           )}
 
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
 
           <button
             type="submit"
